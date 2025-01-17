@@ -18,10 +18,6 @@ register(
 )
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("fork", force=True)
-
-    NUM_ENVS = 6
-    # env = SubprocVecEnv([make_env() for _ in range(NUM_ENVS)])
     env = gym.make("CustomPusher-v0")
 
     model = PPO("MlpPolicy", env, verbose=1)
@@ -30,7 +26,7 @@ if __name__ == "__main__":
     eval_callback = EvalCallback(env, best_model_save_path="models/", log_path="models/", eval_freq=100_000)
     progressbar_callback = ProgressBarCallback()
 
-    callback = [checkpoint_callback, eval_callback, progressbar_callback, ]
+    callback = [checkpoint_callback, eval_callback, progressbar_callback]
     model.learn(total_timesteps=100_000_000, callback=callback)
 
     model_path = f"models/pusher_model-{datetime.datetime.now().strftime('%m.%d-%H:%M:%S')}"

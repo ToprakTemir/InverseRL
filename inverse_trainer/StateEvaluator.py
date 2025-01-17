@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 
-class StateClassifier(nn.Module):
+class StateEvaluator(nn.Module):
     """
     StateClassifier takes is trained on a specific skill, and takes in a state and outputs whether it is the initial
     state of the skill, denoted by -1, or the final state of the skill, denoted by 1, or a random state in between, denoted by 0.
     """
 
     def __init__(self, state_dim):
-        super(StateClassifier, self).__init__()
+        super(StateEvaluator, self).__init__()
 
         self.state_dim = state_dim
 

@@ -9,7 +9,7 @@ register(
     max_episode_steps=300,
 )
 
-model_path = os.path.abspath("models/default_robot_trained/best_model.zip")
+model_path = os.path.abspath("models/default_robot_trained/best_pusher")
 model = PPO.load(model_path)
 
 env = gym.make("CustomPusher-v0", render_mode="human")
