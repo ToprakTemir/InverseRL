@@ -15,7 +15,6 @@ DEFAULT_CAMERA_CONFIG = {
     "distance": 4.0,
 }
 
-
 class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
     metadata = {
         "render_modes": [

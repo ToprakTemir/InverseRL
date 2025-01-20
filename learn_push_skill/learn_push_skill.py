@@ -12,18 +12,22 @@ from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback,
 from gymnasium.envs.registration import register
 
 register(
-    id="CustomPusher-v0",
-    entry_point="CustomPusherEnv:CustomPusherEnv",
+    id="PushTrainer-v0",
+    entry_point="environments.PushTrainerEnv:PushTrainerEnv",
     max_episode_steps=300,
 )
 
+def make_env():
+    return gym.make("PushTrainer-v0")
+
 if __name__ == "__main__":
-    env = gym.make("CustomPusher-v0")
+    num_envs = multiprocessing.cpu_count() // 2
+    env = SubprocVecEnv([make_env for _ in range(num_envs)])
 
     model = PPO("MlpPolicy", env, verbose=1)
 
-    checkpoint_callback = CheckpointCallback(save_freq=100_000, save_path="models/")
-    eval_callback = EvalCallback(env, best_model_save_path="models/", log_path="models/", eval_freq=100_000)
+    checkpoint_callback = CheckpointCallback(save_freq=100_000, save_path="models/with_force_penalty/")
+    eval_callback = EvalCallback(env, best_model_save_path="models/with_force_penalty/", log_path="models/with_force_penalty/", eval_freq=100_000)
     progressbar_callback = ProgressBarCallback()
 
     callback = [checkpoint_callback, eval_callback, progressbar_callback]
