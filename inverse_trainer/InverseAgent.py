@@ -7,10 +7,9 @@ import torch.optim as optim
 from stable_baselines3 import PPO
 import gymnasium as gym
 import minari
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, ProgressBarCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from torch.distributions import MultivariateNormal
 
-from environments.CustomPusherEnv import CustomPusherEnv
 from StateEvaluator import StateEvaluator
 from StateCreator import StateCreator
 
@@ -172,7 +171,7 @@ class InverseAgent(nn.Module):
         inverse_model = PPO.load("/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_01.16-13:25", env=env, verbose=1)
 
         if self.forward_model is not None:
-            inverse_model.set_parameters(self.forward_model.get_parameters())
+            inverse_model.set_parameters(self.forward_model.get_parameters()) # IMPORTANT: it should derive an initial inverse policy from the forward model, not directly set the forward model as the initial policy
 
         checkpoint_callback = CheckpointCallback(save_freq=total_timesteps//10, save_path="./models/inverse_model_logs/")
         eval_callback = EvalCallback(env, best_model_save_path="./models/inverse_model_logs/", log_path="./models/inverse_model_logs/", eval_freq=total_timesteps//100)
@@ -201,7 +200,7 @@ if __name__ == "__main__":
     # forward_model_path = "/Users/toprak/InverseRL/learn_push_skill/models/default_robot_trained/best_pusher.zip"
     # forward_model = PPO.load(forward_model_path)
 
-    inverse_agent = InverseAgent(state_dim, action_dim, dataset, None, forward_model=None)
+    inverse_agent = InverseAgent(state_dim, action_dim, dataset, None, forward_model=None) # the inverse trainer env will be set after the training of the state networks
 
     # train the state networks
     # inverse_agent.train_state_networks()

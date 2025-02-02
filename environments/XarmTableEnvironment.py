@@ -1,5 +1,3 @@
-import os.path
-
 import numpy as np
 from gymnasium import spaces
 from gymnasium.utils import EzPickle
@@ -9,22 +7,8 @@ import mujoco
 class XarmTableEnv(MujocoEnv, EzPickle):
     """
     A tabletop environment with an xArm7 manipulator placed on one edge
-    of a 1x1x1 table, and a 5cm cube on the table. The robot is position-controlled.
+    of a 2x2x1 table, and a 5cm cube on the table. The robot is position-controlled.
     Collisions between the arm, table, and cube are enabled.
-
-    Observations (dim=20):
-        0-6   : joint positions [7]
-        7-13  : joint velocities [7]
-        14-16 : end-effector xyz [3]
-        17-19 : cube xyz [3]
-
-    Reward:
-        - The inverse of the distance between the end-effector and the cube
-        - Minus a small penalty for large control actions
-
-    Episode termination:
-        - If a strong collision with the table occurs (fail flag = True)
-        - After max_steps
     """
 
     metadata = {
@@ -41,7 +25,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         frame_skip=5,
         distance_weight=1.0,     # weight for inverse distance reward
         control_penalty_weight=0.1,    # penalty factor for large control actions
-        force_penalty_weight = 0.1,
+        force_penalty_weight = 0.01,
         render_mode = None,
     ):
         EzPickle.__init__(
@@ -82,6 +66,8 @@ class XarmTableEnv(MujocoEnv, EzPickle):
             "render_fps": int(np.round(1.0 / self.dt)),
         }
 
+        self.robot_base_xy = np.array([0, -1])
+
 
     def step(self, action):
         self.do_simulation(action, self.frame_skip)
@@ -118,30 +104,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         return total_force_on_table
 
     def _compute_reward(self, action):
-        # Distance-based reward
-        ee_pos = self.get_ee_pos()
-        cube_pos = self.get_object_position()
-        distance = np.linalg.norm(ee_pos - cube_pos)
-        distance_reward = (1 / (distance + 1e-6)) * self.distance_weight
-
-        # Control penalty
-        ctrl_cost = np.sum(np.square(action)) * self.control_penalty_weight
-
-        # table collision penalty
-        total_force_on_table = 0
-        for i in range(self.model.ncon):
-            contact = self.data.contact[i]
-            geom1 = self.model.geom_id2name(contact.geom1)
-            geom2 = self.model.geom_id2name(contact.geom2)
-
-            if "table" in geom1 or "table" in geom2:
-                total_force_on_table += np.linalg.norm(contact.f)
-
-        force_penalty = total_force_on_table * self.force_penalty_weight
-
-        reward = distance_reward - ctrl_cost - force_penalty
-
-        return reward
+        raise NotImplementedError
 
     def _check_collision_with_table(self):
         return False
@@ -163,6 +126,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         ee_pos: 3d
         - 3d end-effector position
         """
+
         qpos = self.data.qpos[:].copy()
         qvel = self.data.qvel[:].copy()
         ee_pos = self.get_ee_pos()
@@ -181,7 +145,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         qvel = self.init_qvel
 
         # X is to the right, Y is into the screen, Z is up
-        # the square table is centered at (0, 0) with side length 1
+        # the square table is centered at (0, 0) with side length 2
         # the robot base is at (0, -1)
 
         init_cube_pos = np.array([0, -0.5, 0.04])

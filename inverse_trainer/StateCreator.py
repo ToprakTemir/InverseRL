@@ -19,25 +19,25 @@ class StateCreator(nn.Module):
         self.rank = rank
 
         self.fc_mu = nn.Sequential(
-            nn.Linear(1, 256),
+            nn.Linear(1, 64),
             nn.ReLU(),
-            nn.Linear(256, 256),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(256, state_dim)
+            nn.Linear(64, state_dim)
         )
         self.fc_L = nn.Sequential(                  # Low rank matrix L that approximates the covariance matrix
-            nn.Linear(1, 256),
+            nn.Linear(1, 64),
             nn.ReLU(),
-            nn.Linear(256, 256),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(256, state_dim * rank)
+            nn.Linear(64, state_dim * rank)
         )
         self.fc_D = nn.Sequential(
-            nn.Linear(1, 256), # Diagonal D of the covariance matrix
+            nn.Linear(1, 64), # Diagonal D of the covariance matrix
             nn.ReLU(),
-            nn.Linear(256, 256),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(256, state_dim)
+            nn.Linear(64, state_dim)
         )
 
     def forward(self, labels):

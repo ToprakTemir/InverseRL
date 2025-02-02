@@ -13,7 +13,7 @@ from gymnasium.envs.registration import register
 
 register(
     id="PushTrainer-v0",
-    entry_point="environments.PushTrainerEnv:PushTrainerEnv",
+    entry_point="environments.XarmPushTrainerEnv:PushTrainerEnv",
     max_episode_steps=300,
 )
 
@@ -21,17 +21,17 @@ def make_env():
     return gym.make("PushTrainer-v0")
 
 if __name__ == "__main__":
-    num_envs = multiprocessing.cpu_count() // 2
+    num_envs = multiprocessing.cpu_count()
     env = SubprocVecEnv([make_env for _ in range(num_envs)])
 
-    model = PPO("MlpPolicy", env, verbose=1)
+    model = PPO("MlpPolicy", env, verbose=1, device="cpu", tensorboard_log="./ppo_logs/")
 
-    checkpoint_callback = CheckpointCallback(save_freq=100_000, save_path="models/with_force_penalty/")
-    eval_callback = EvalCallback(env, best_model_save_path="models/with_force_penalty/", log_path="models/with_force_penalty/", eval_freq=100_000)
+    checkpoint_callback = CheckpointCallback(save_freq=100_000, save_path="models/force_penalty_v4/")
+    eval_callback = EvalCallback(env, best_model_save_path="models/force_penalty_v4/", log_path="models/force_penalty_v4/", eval_freq=100_000)
     progressbar_callback = ProgressBarCallback()
 
     callback = [checkpoint_callback, eval_callback, progressbar_callback]
-    model.learn(total_timesteps=100_000_000, callback=callback)
+    model.learn(total_timesteps=50_000_000, callback=callback)
 
     model_path = f"models/pusher_model-{datetime.datetime.now().strftime('%m.%d-%H:%M:%S')}"
     model.save(model_path)

@@ -37,6 +37,13 @@ class InverseTrainerEnv(XarmTableEnv):
         self.distance_reward_weight = distance_reward_weight
         self.control_penalty_weight = control_penalty_weight
 
+        self.MIN_ANGLE = np.pi/6
+        self.MIN_R = 0.4
+        self.MAX_R = 0.8
+
+        self.object_init_pos = np.zeros(3)
+        self.goal_pos = np.array([0, -1, 0]) # IMPORTANT: hard-coded as the base of the robot
+
         self.metadata = XarmTableEnv.metadata
 
 
@@ -47,18 +54,25 @@ class InverseTrainerEnv(XarmTableEnv):
         super().step(action)
 
     def reset_model(self, push_direction=None):
-
-        predicted_start = self.state_creator.sample(torch.tensor([1.0])).flatten().detach().numpy()
-
         qpos = self.init_qpos
+        qvel = self.init_qvel
 
-        qpos[-4:-2] = predicted_start[17:19] # IMPORTANT: only valid for the gym pusher environment
-        qpos[-2:] = predicted_start[20:22] # IMPORTANT: only valid for the gym pusher environment
+        # X is to the right, Y is into the screen, Z is up
+        # the square table is centered at (0, 0) with side length 2
+        # the robot base is at (0, -1)
 
-        qvel = self.init_qvel + self.np_random.uniform(
-            low=-0.005, high=0.005, size=self.model.nv
-        )
-        qvel[-4:] = 0
+        R = np.random.uniform(self.MIN_R, self.MAX_R)
+
+        # randomize the object in a circle around the robot
+        angle = np.random.uniform(self.MIN_ANGLE, np.pi - self.MIN_ANGLE)
+        obj_xy = self.robot_base_xy + R * np.array([np.cos(angle), np.sin(angle)])
+
+        init_obj_pos = np.concatenate([obj_xy, [0]])
+
+        self.object_init_pos = init_obj_pos
+
+        qpos[:3] = init_obj_pos
+        qpos[3:7] = [1, 0, 0, 0]
 
         self.set_state(qpos, qvel)
         return self._get_obs()
@@ -69,17 +83,8 @@ class InverseTrainerEnv(XarmTableEnv):
         current_state = torch.tensor(current_state, dtype=torch.float32).unsqueeze(0)
 
         # CALCULATING STATE REWARD USING STATE EVALUATOR
-        state_reward = -self.state_evaluator(current_state) # - rewards getting negative output from evaluator
+        state_reward = -self.state_evaluator(current_state) # - sign rewards negative outputs from evaluator
         state_reward = state_reward.item()
-
-        # CALCULATING STATE REWARD USING STATE CREATOR
-        # sample a goal state and give reward based on the distance to the goal state
-        # goal_state = self.state_creator.sample(torch.tensor([-1.0])).flatten().detach().numpy()
-        #
-        # current_state_without_robot = current_state[-6:]
-        # goal_state_without_robot = goal_state[-6:]
-        # distance_to_goal_state = np.linalg.norm(current_state_without_robot - goal_state_without_robot)
-        # state_reward = (1 / distance_to_goal_state) * self._reward_state_weight
 
         distance_to_object = self.get_body_com("object") - self.get_body_com("tips_arm")
         distance_reward = (1 / np.linalg.norm(distance_to_object)) * self.distance_reward_weight

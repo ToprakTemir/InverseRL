@@ -12,9 +12,9 @@ class StateEvaluator(nn.Module):
 
         self.state_dim = state_dim
 
-        self.fc1 = nn.Linear(state_dim, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 1)
+        self.fc1 = nn.Linear(state_dim, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, 1)
 
     def forward(self, state):
         x = torch.relu(self.fc1(state))

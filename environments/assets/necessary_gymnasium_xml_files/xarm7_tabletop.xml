@@ -77,9 +77,9 @@
     </worldbody>
 
     <contact>
-        <pair geom1="table_geom" geom2="cube_geom"/>
-<!--        <pair geom1="cube_geom" geom2="robot"/>-->
-<!--        <pair geom1="table_geom" geom2="robot"/>-->
+<!--        <pair geom1="table_geom" geom2="cube_geom"/>-->
+        <pair geom1="cube_geom" geom2="robot"/>
+        <pair geom1="table_geom" geom2="robot"/>
         <exclude body1="right_inner_knuckle" body2="right_outer_knuckle"/>
         <exclude body1="right_inner_knuckle" body2="right_finger"/>
         <exclude body1="left_inner_knuckle" body2="left_outer_knuckle"/>
