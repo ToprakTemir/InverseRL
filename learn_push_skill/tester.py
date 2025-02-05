@@ -20,7 +20,7 @@ OPTION = "best"
 
 print(f"testing with {OPTION} model")
 
-model_dir_path = "/Users/toprak/InverseRL/learn_push_skill/models/adjusted_gripper_finetune/"
+model_dir_path = "/Users/toprak/InverseRL/learn_push_skill/models/adjusted_gripper/"
 
 if OPTION == "latest":
     model_directory = os.listdir(model_dir_path)
@@ -48,7 +48,7 @@ env = gym.make("XarmPushTrainer-v0", render_mode="human")
 while True:
     observation, _ = env.reset()
     episode_over = False
-    length = 3
+    length = 20
     while not episode_over:
         action, _ = model.predict(observation)
         print(action)

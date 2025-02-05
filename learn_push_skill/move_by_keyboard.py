@@ -327,15 +327,15 @@ class XarmTableEnv(MujocoEnv, EzPickle):
             elif key == glfw.KEY_EQUAL:
                 self.controller.speed_up()
 
-    def render(self):
-        if self.render_mode == "human" and not self._keyboard_callback_set:
-            # Launch the viewer manually if it doesn’t exist
-            mujoco.viewer.launch(self.model, self.data)
-
-            # Attach the key callback after launching the viewer
-            if glfw.get_current_context() is not None:  # Ensure there is an active OpenGL context
-                glfw.set_key_callback(glfw.get_current_context(), self._keyboard_callback)
-                self._keyboard_callback_set = True
+    # def render(self):
+    #     if self.render_mode == "human" and not self._keyboard_callback_set:
+    #         # Launch the viewer manually if it doesn’t exist
+    #         # mujoco.viewer.launch(self.model, self.data)
+    #
+    #         # Attach the key callback after launching the viewer
+    #         if glfw.get_current_context() is not None:  # Ensure there is an active OpenGL context
+    #             glfw.set_key_callback(glfw.get_current_context(), self._keyboard_callback)
+    #             self._keyboard_callback_set = True
 
 
 if __name__ == "__main__":

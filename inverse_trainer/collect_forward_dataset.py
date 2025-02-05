@@ -6,17 +6,16 @@ from minari import DataCollector
 
 from gymnasium.envs.registration import register
 register(
-    id="CustomPusher-v0",
-    entry_point="environments.CustomPusherEnv:CustomPusherEnv",
+    id="XarmPushTrainer-v0",
+    entry_point="environments.XarmPushTrainerEnv:PushTrainerEnv",
     max_episode_steps=300,
 )
 
-
 def collect_forward_demo(dataset_id, num_demos):
-    forward_model_path = "../learn_push_skill/models/default_robot_trained/best_pusher.zip"
+    forward_model_path = "../learn_push_skill/models/adjusted_gripper/best_model.zip"
     forward_model = PPO.load(forward_model_path)
 
-    env = gym.make("CustomPusher-v0")
+    env = gym.make("XarmPushTrainer-v0")
     env = DataCollector(env, record_infos=False)
 
     for i in range(num_demos):
@@ -31,13 +30,12 @@ def collect_forward_demo(dataset_id, num_demos):
 
     env.create_dataset(
         dataset_id = dataset_id,
-        algorithm_name="PPO_pusher",
-        author="Bora Toprak Temir",
-        description="Standard push forward demo",
+        algorithm_name="PPO_xarm_pusher",
+        author="Bora Toprak Temir"
     )
 
 if __name__ == "__main__":
-    dataset_id = "pusher_demo_R08_large-v0"
-    num_demos = 10000
+    dataset_id = "xarm_push_10k-v0"
+    num_demos = 10_000
     collect_forward_demo(dataset_id, num_demos)
 

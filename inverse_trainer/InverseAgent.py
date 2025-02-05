@@ -6,10 +6,8 @@ import torch.nn as nn
 import torch.optim as optim
 from minari import MinariDataset
 from stable_baselines3 import PPO
-import gymnasium as gym
 import minari
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement
-from torch.distributions import MultivariateNormal
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
@@ -49,7 +47,7 @@ class InverseAgent(nn.Module):
         self.total_steps = 1_000_000
         # self.batch_size = 128
 
-        self.num_steps_for_inverse_skill = 300_000_000
+        self.num_steps_for_inverse_skill = 30_000_000
 
         self.classifier_loss_coeff = 1
         self.creator_loss_coeff = 1
@@ -68,16 +66,21 @@ class InverseAgent(nn.Module):
         for i in range(self.total_steps):
             episode = next(iter(self.dataset.sample_episodes(1)))
             points = episode.observations
-            timestamp = np.random.randint(0, len(points))
 
-            point = torch.tensor(points[timestamp], dtype=torch.float32)
+            point_idx = np.random.randint(0, len(points))
+            point = torch.tensor(points[point_idx], dtype=torch.float32)
+
             predicted_timestamp = self.state_evaluator(point)
-
-            loss = self.mse_loss(predicted_timestamp, torch.tensor(timestamp, dtype=torch.float32))
+            real_timestamp = torch.tensor(point_idx / len(points), dtype=torch.float32)
+            loss = self.mse_loss(predicted_timestamp, real_timestamp)
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+
+            t0 = datetime.now()
+            if i % 1000 == 0:
+                print(f"step: {i}, loss: {loss}, time: {datetime.now() - t0}")
 
 
     def save_state_evaluator(self):
@@ -122,7 +125,7 @@ class InverseAgent(nn.Module):
 
 if __name__ == "__main__":
 
-    dataset = minari.load_dataset("pusher_demo_R08_large-v0") # TODO: collect xarm dataset
+    dataset = minari.load_dataset("xarm_push_10k-v0")
 
     inverse_agent = InverseAgent(dataset)
 
@@ -131,44 +134,3 @@ if __name__ == "__main__":
 
     inverse_agent.train_inverse_model()
     inverse_agent.save_inverse_model()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# TODO: demonstrationları kullanarak inverse RL için güzel bir başlangıç policy öğrenme yolu araştır
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
