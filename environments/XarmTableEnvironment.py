@@ -33,6 +33,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
             frame_skip,
             distance_weight,
             control_penalty_weight,
+            force_penalty_weight,
             render_mode,
         )
 

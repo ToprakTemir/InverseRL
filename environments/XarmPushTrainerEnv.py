@@ -23,6 +23,13 @@ class PushTrainerEnv(XarmTableEnv):
             force_penalty_weight=force_penalty_weight,
             render_mode=render_mode,
         )
+        EzPickle.__init__(
+            self,
+            distance_weight,
+            control_penalty_weight,
+            force_penalty_weight,
+            render_mode,
+        )
 
         self.MIN_ANGLE = np.pi/4
         self.MIN_R = 0.4

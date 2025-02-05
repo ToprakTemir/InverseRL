@@ -1,3 +1,4 @@
+import multiprocessing
 from datetime import datetime
 
 import numpy as np
@@ -8,6 +9,7 @@ from minari import MinariDataset
 from stable_baselines3 import PPO
 import minari
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
@@ -114,13 +116,19 @@ class InverseAgent(nn.Module):
         simulation_environment = self.dataset.recover_environment().unwrapped
         trainer_env = InverseTrainerEnv(self.state_evaluator, self.dataset, simulation_environment)
         self.inverse_trainer_environment = trainer_env
+        return trainer_env
+
+    def make_env(self):
+        return self.inverse_trainer_environment
 
     def train_inverse_model(self):
 
         self.create_inverse_RL_environment()
-        env = self.inverse_trainer_environment
 
-        inverse_model = PPO("MlpPolicy", env=self.inverse_trainer_environment, verbose=1)
+        num_envs = multiprocessing.cpu_count()
+        env = SubprocVecEnv([self.make_env for _ in range(num_envs)])
+
+        inverse_model = PPO("MlpPolicy", env=env, verbose=1)
 
         total_timesteps = self.num_steps_for_inverse_skill
         checkpoint_callback = CheckpointCallback(save_freq=total_timesteps//100, save_path="./models/inverse_model_logs/")
