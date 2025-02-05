@@ -63,6 +63,11 @@ class InverseAgent(nn.Module):
         # but state evaluator is only trained by the demonstrations, what if the RL agent gets to a state that is not in the demonstrations at all,
         # and state evaluator gives a random point, possibly close to 0? Then RL agent will get a reward for that, which is not what we want.
 
+        t0 = datetime.now()
+        time_id = datetime.now().strftime('%m.%d-%H:%M')
+        differences_log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
+        difference_logs = np.zeros(self.total_steps)
+
         for i in range(self.total_steps):
             episode = next(iter(self.dataset.sample_episodes(1)))
             points = episode.observations
@@ -74,13 +79,17 @@ class InverseAgent(nn.Module):
             real_timestamp = torch.tensor(point_idx / len(points), dtype=torch.float32)
             loss = self.mse_loss(predicted_timestamp, real_timestamp)
 
+            difference_logs[i] = torch.abs(predicted_timestamp - real_timestamp)
+
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
-            t0 = datetime.now()
             if i % 1000 == 0:
                 print(f"step: {i}, loss: {loss}, time: {datetime.now() - t0}")
+            if i % 1000 == 0:
+                np.save(differences_log_path, difference_logs)
+
 
 
     def save_state_evaluator(self):

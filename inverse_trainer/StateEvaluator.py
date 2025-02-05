@@ -11,7 +11,7 @@ class StateEvaluator(nn.Module):
 
         self.state_dim = state_dim
 
-        self.forward = nn.Sequential(
+        self.sequential = nn.Sequential(
             nn.Linear(state_dim, 128),
             nn.ReLU(),
             nn.Linear(128, 128),
@@ -20,6 +20,7 @@ class StateEvaluator(nn.Module):
         )
 
     def forward(self, state):
-        x = self.forward(state)
+        x = self.sequential(state)
         x = torch.sigmoid(x)
+        return x
 
