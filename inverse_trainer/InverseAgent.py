@@ -5,14 +5,22 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from minari import MinariDataset
 from stable_baselines3 import PPO
 import minari
+from minari import MinariDataset
+import gymnasium as gym
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
+
+from gymnasium.envs.registration import register
+register(
+    id="InverseTrainerEnv-v0",
+    entry_point="inverse_trainer.InverseTrainerEnv:InverseTrainerEnv",
+    max_episode_steps=300,
+)
 
 
 class InverseAgent(nn.Module):
@@ -114,7 +122,13 @@ class InverseAgent(nn.Module):
             raise Exception("State evaluator is not trained yet.")
 
         simulation_environment = self.dataset.recover_environment().unwrapped
-        trainer_env = InverseTrainerEnv(self.state_evaluator, self.dataset, simulation_environment)
+
+        trainer_env = gym.make(
+            "InverseTrainerEnv-v0",
+            state_evaluator=self.state_evaluator,
+            dataset=self.dataset,
+            env=simulation_environment
+        )
         self.inverse_trainer_environment = trainer_env
         return trainer_env
 
@@ -125,14 +139,14 @@ class InverseAgent(nn.Module):
 
         self.create_inverse_RL_environment()
 
-        num_envs = multiprocessing.cpu_count() // 8
+        num_envs = multiprocessing.cpu_count() // 2
         env = SubprocVecEnv([self.make_env for _ in range(num_envs)])
 
         inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
 
         total_timesteps = self.num_steps_for_inverse_skill
         save_freq = 100_000
-        report_freq = 1
+        report_freq = 100
 
         checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="./models/inverse_model_logs/")
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
