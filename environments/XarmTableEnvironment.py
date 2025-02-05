@@ -1,4 +1,5 @@
 import numpy as np
+from glfw.library import glfw
 from gymnasium import spaces
 from gymnasium.utils import EzPickle
 from gymnasium.envs.mujoco import MujocoEnv
@@ -7,8 +8,6 @@ import mujoco
 class XarmTableEnv(MujocoEnv, EzPickle):
     """
     A tabletop environment with an xArm7 manipulator placed on one edge
-    of a 2x2x1 table, and a 5cm cube on the table. The robot is position-controlled.
-    Collisions between the arm, table, and cube are enabled.
     """
 
     metadata = {
@@ -23,9 +22,9 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         self,
         xml_file="xarm7_tabletop.xml",
         frame_skip=5,
-        distance_weight=1.0,     # weight for inverse distance reward
+        distance_weight=1.0,
         control_penalty_weight=0.1,    # penalty factor for large control actions
-        force_penalty_weight = 0.01,
+        force_penalty_weight = 0.01,   # penalty factor for collisions
         render_mode = None,
     ):
         EzPickle.__init__(
@@ -42,7 +41,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         self.force_penalty_weight = force_penalty_weight
 
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(42,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(14,), dtype=np.float32
         )
 
         MujocoEnv.__init__(
@@ -70,6 +69,8 @@ class XarmTableEnv(MujocoEnv, EzPickle):
 
 
     def step(self, action):
+        action[7] *= 255
+        action[7].clip(0, 255)
         self.do_simulation(action, self.frame_skip)
         if self.render_mode == "human":
             self.render()
@@ -85,6 +86,17 @@ class XarmTableEnv(MujocoEnv, EzPickle):
             "collusion": collusion,
         }
         return obs, reward, False, False, info
+
+    def get_mocap_pos(self):
+        return self.data.mocap_pos.copy()
+
+    def set_mocap_pos(self, pos: np.array(3)):
+        self.data.mocap_pos = pos
+        mujoco.mj_forward(self.model, self.data)
+
+    def set_mocap_quat(self, quat: np.array(4)):
+        self.data.mocap_quat = quat
+        mujoco.mj_forward(self.model, self.data)
 
     def compute_total_force_on_table(self):
         total_force_on_table = 0
@@ -104,13 +116,22 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         return total_force_on_table
 
     def _compute_reward(self, action):
-        raise NotImplementedError
+        return 0
 
     def _check_collision_with_table(self):
         return False
 
     def _get_obs(self):
         """
+        Returns a 14D observation:
+        0:2 3d cube position
+        3:9 7d joint positions
+        10 1d gripper closeness (0: fully open, 255: fully closed)
+        11:13 3d end-effector position
+
+
+        OLD OBSERVATION:
+        ---------------
         Returns a 42D observation:
 
         qpos: 20d
@@ -128,9 +149,15 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         """
 
         qpos = self.data.qpos[:].copy()
-        qvel = self.data.qvel[:].copy()
+        # qvel = self.data.qvel[:].copy()
+
+        cube_pos = qpos[:3]
+        joint_pos = qpos[7:14]
+        gripper_closeness = self.model.tendon_length0 / 255
         ee_pos = self.get_ee_pos()
-        return np.concatenate([qpos, qvel, ee_pos]).astype(np.float32)
+        return np.concatenate([cube_pos, joint_pos, gripper_closeness, ee_pos]).astype(np.float32)
+
+
 
     def get_ee_pos(self):
         left_finger_pos = self.data.body("left_finger").xpos.copy()
@@ -157,3 +184,12 @@ class XarmTableEnv(MujocoEnv, EzPickle):
 
         self.set_state(qpos, qvel)
         return self._get_obs()
+
+
+if __name__ == "__main__":
+    env = XarmTableEnv(render_mode="human")
+
+    obs = env.reset()
+    for _ in range(1000):
+        obs = env.step(env.action_space.sample())
+        print(obs)

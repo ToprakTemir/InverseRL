@@ -25,9 +25,11 @@ if __name__ == "__main__":
     env = SubprocVecEnv([make_env for _ in range(num_envs)])
 
     model = PPO("MlpPolicy", env, verbose=1, device="cpu", tensorboard_log="./ppo_logs/")
+    model.set_parameters("/Users/toprak/InverseRL/learn_push_skill/models/adjusted_gripper/rl_model_28000000_steps.zip")
 
-    checkpoint_callback = CheckpointCallback(save_freq=100_000, save_path="models/force_penalty_v4/")
-    eval_callback = EvalCallback(env, best_model_save_path="models/force_penalty_v4/", log_path="models/force_penalty_v4/", eval_freq=100_000)
+    path = "models/adjusted_gripper_finetune/"
+    checkpoint_callback = CheckpointCallback(save_freq=100_000, save_path=path)
+    eval_callback = EvalCallback(env, best_model_save_path=path, log_path=path, eval_freq=100)
     progressbar_callback = ProgressBarCallback()
 
     callback = [checkpoint_callback, eval_callback, progressbar_callback]

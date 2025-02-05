@@ -74,12 +74,13 @@
         <body name="robot" pos="0 -1 -0.20" quat="1 0 0 0" childclass="xarm7">
             <include file="xarm7_model.xml"/>
         </body>
+
+        <body mocap="true" name="mocap" pos="0 0 0">
+
+        </body>
     </worldbody>
 
     <contact>
-<!--        <pair geom1="table_geom" geom2="cube_geom"/>-->
-        <pair geom1="cube_geom" geom2="robot"/>
-        <pair geom1="table_geom" geom2="robot"/>
         <exclude body1="right_inner_knuckle" body2="right_outer_knuckle"/>
         <exclude body1="right_inner_knuckle" body2="right_finger"/>
         <exclude body1="left_inner_knuckle" body2="left_outer_knuckle"/>
@@ -97,6 +98,7 @@
         <connect anchor="0 0.015 0.015" body1="right_finger" body2="right_inner_knuckle" solref="0.005 1"/>
         <connect anchor="0 -0.015 0.015" body1="left_finger" body2="left_inner_knuckle" solref="0.005 1"/>
         <joint joint1="left_driver_joint" joint2="right_driver_joint" polycoef="0 1 0 0 0" solref="0.005 1"/>
+        <weld body1="mocap" body2="xarm_gripper_base_link" solimp="0.9 0.95 0.001" solref="0.02 1" />
     </equality>
 
     <actuator>

@@ -6,111 +6,89 @@ import torch
 from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.spaces import Box
+import minari
 
 from StateEvaluator import StateEvaluator
-from StateCreator import StateCreator
 
 DEFAULT_CAMERA_CONFIG = {
     "trackbodyid": -1,
     "distance": 4.0,
 }
 
+
 class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
-    metadata = {
-        "render_modes": [
-            "human",
-            "rgb_array",
-            "depth_array",
-        ],
-    }
+    # metadata = {
+    #     "render_modes": [
+    #         "human",
+    #         "rgb_array",
+    #         "depth_array",
+    #     ],
+    # }
 
     def __init__(
             self,
             state_evaluator : StateEvaluator,
-            state_creator : StateCreator,
-            state_dim = 23,
-            action_dim = 7,
+            dataset: minari.MinariDataset,
+            env: MujocoEnv,
             state_reward_weight = 1,
             reward_dist_weight = 0.5,
             reward_control_weight: float = 0.1,
-            xml_file: str = "pusher_v5.xml",
-            frame_skip: int = 5,
-            default_camera_config: Dict[str, Union[float, int]] = DEFAULT_CAMERA_CONFIG,
             **kwargs,
     ):
         utils.EzPickle.__init__(
             self,
-            xml_file,
-            frame_skip,
-            default_camera_config,
+            state_evaluator,
+            dataset,
+            env,
+            state_reward_weight,
+            reward_dist_weight,
             reward_control_weight,
             **kwargs,
         )
+
         self.state_evaluator = state_evaluator
-        self.state_creator = state_creator
-        self.state_dim = state_dim
-        self.action_dim = action_dim
+        self.dataset = dataset
+        self.env = env
 
         self._reward_control_weight = reward_control_weight
         self.reward_dist_weight = reward_dist_weight
         self._reward_state_weight = state_reward_weight
 
-        observation_space = Box(low=-np.inf, high=np.inf, shape=(23,), dtype=np.float64)
-
-        MujocoEnv.__init__(
-            self,
-            xml_file,
-            frame_skip,
-            observation_space=observation_space,
-            default_camera_config=default_camera_config,
-            **kwargs,
-        )
-
-        self.metadata = {
-            "render_modes": [
-                "human",
-                "rgb_array",
-                "depth_array",
-            ],
-            "render_fps": int(np.round(1.0 / self.dt)),
-        }
+        # MujocoEnv.__init__(
+        #     self,
+        #     xml_file=env.model_xml,
+        #     frame_skip=env.frame_skip,
+        #     observation_space=env.observation_space,
+        #     default_camera_config=DEFAULT_CAMERA_CONFIG,
+        #     **kwargs,
+        # )
+        #
+        # self.metadata = {
+        #     "render_modes": [
+        #         "human",
+        #         "rgb_array",
+        #         "depth_array",
+        #     ],
+        #     "render_fps": int(np.round(1.0 / self.dt)),
+        # }
 
     def step(self, action):
-        self.do_simulation(action, self.frame_skip)
 
-        observation = self._get_obs()
-        reward, reward_info = self._get_rew(action)
-        info = reward_info
+        obs, _, terminated, truncated, info = self.env.step(action)
+        reward, reward_info = self._get_rew(obs, action)
 
-        if self.render_mode == "human":
-            self.render()
-        # truncation=False as the time limit is handled by the `TimeLimit` wrapper added during `make`
-        return observation, reward, False, False, info
+        return obs, reward, terminated, truncated, info | reward_info
 
-    def _get_rew(self, action):
+    def _get_rew(self, obs, action):
 
-        current_state = self._get_obs()
-        current_state = torch.tensor(current_state, dtype=torch.float32).unsqueeze(0)
+        state_reward = - self.state_evaluator(obs).item() # - sign makes negative output from evaluator desirable
 
-        # CALCULATING STATE REWARD USING STATE EVALUATOR
-        state_reward = -self.state_evaluator(current_state) # - rewards getting negative output from evaluator
-        state_reward = state_reward.item()
+        # distance_to_object = self.get_body_com("object") - self.get_body_com("tips_arm")
+        # distance_reward = (1 / np.linalg.norm(distance_to_object)) * self.reward_dist_weight
 
-        # CALCULATING STATE REWARD USING STATE CREATOR
-        # sample a goal state and give reward based on the distance to the goal state
-        # goal_state = self.state_creator.sample(torch.tensor([-1.0])).flatten().detach().numpy()
-        #
-        # current_state_without_robot = current_state[-6:]
-        # goal_state_without_robot = goal_state[-6:]
-        # distance_to_goal_state = np.linalg.norm(current_state_without_robot - goal_state_without_robot)
-        # state_reward = (1 / distance_to_goal_state) * self._reward_state_weight
+        ctrl_penalty = np.square(action).sum() * self._reward_control_weight
 
-        distance_to_object = self.get_body_com("object") - self.get_body_com("tips_arm")
-        distance_reward = (1 / np.linalg.norm(distance_to_object)) * self.reward_dist_weight
-
-        ctrl_penalty = -np.square(action).sum() * self._reward_control_weight
-
-        reward = state_reward + distance_reward + ctrl_penalty
+        reward = state_reward - ctrl_penalty
 
         reward_info = {
             "state_reward": state_reward,
@@ -118,30 +96,21 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
         }
         return reward, reward_info
 
-    def reset_model(self, push_direction=None):
+    def reset_model(self):
+        """
+        sets the environment to a random initial state similar to a moment in the dataset.
+        """
 
-        predicted_start = self.state_creator.sample(torch.tensor([1.0])).flatten().detach().numpy()
+        sampled_episode = list(self.dataset.sample_episodes(1))[0]
+        sample_time = np.random.randint(0, len(sampled_episode))
 
-        qpos = self.init_qpos
+        # TODO: check if always started from a given point (this method) results in high enough variety.
+        # if not, a solution could be training a CNMP to learn the forward skill, and then sample an episode from it.
 
-        qpos[-4:-2] = predicted_start[17:19] # IMPORTANT: only valid for the gym pusher environment
-        qpos[-2:] = predicted_start[20:22] # IMPORTANT: only valid for the gym pusher environment
+        self.env.reset()
+        for i in range(sample_time-1):
+            self.env.step(sampled_episode.actions[i])
 
-        qvel = self.init_qvel + self.np_random.uniform(
-            low=-0.005, high=0.005, size=self.model.nv
-        )
-        qvel[-4:] = 0
+        obs, _, _, _, _ = self.env.step(sampled_episode.actions[sample_time-1])
 
-        self.set_state(qpos, qvel)
-        return self._get_obs()
-
-    def _get_obs(self):
-        return np.concatenate(
-            [
-                self.data.qpos.flatten()[:7],
-                self.data.qvel.flatten()[:7],
-                self.get_body_com("tips_arm"),
-                self.get_body_com("object"),
-                self.get_body_com("goal"),
-            ]
-        )
+        return obs
