@@ -17,13 +17,13 @@ DEFAULT_CAMERA_CONFIG = {
 
 
 class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
-    # metadata = {
-    #     "render_modes": [
-    #         "human",
-    #         "rgb_array",
-    #         "depth_array",
-    #     ],
-    # }
+    metadata = {
+        "render_modes": [
+            "human",
+            "rgb_array",
+            "depth_array",
+        ],
+    }
 
     def __init__(
             self,
@@ -54,23 +54,23 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
         self.reward_dist_weight = reward_dist_weight
         self._reward_state_weight = state_reward_weight
 
-        # MujocoEnv.__init__(
-        #     self,
-        #     xml_file=env.model_xml,
-        #     frame_skip=env.frame_skip,
-        #     observation_space=env.observation_space,
-        #     default_camera_config=DEFAULT_CAMERA_CONFIG,
-        #     **kwargs,
-        # )
-        #
-        # self.metadata = {
-        #     "render_modes": [
-        #         "human",
-        #         "rgb_array",
-        #         "depth_array",
-        #     ],
-        #     "render_fps": int(np.round(1.0 / self.dt)),
-        # }
+        MujocoEnv.__init__(
+            self,
+            model_path=env.fullpath,
+            frame_skip=env.frame_skip,
+            observation_space=env.observation_space,
+            default_camera_config=DEFAULT_CAMERA_CONFIG,
+            **kwargs,
+        )
+        self.metadata = {
+            "render_modes": [
+                "human",
+                "rgb_array",
+                "depth_array",
+            ],
+            "render_fps": int(np.round(1.0 / self.dt)),
+        }
+
 
     def step(self, action):
 
@@ -81,6 +81,7 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
 
     def _get_rew(self, obs, action):
 
+        obs = torch.tensor(obs, dtype=torch.float32)
         state_reward = - self.state_evaluator(obs).item() # - sign makes negative output from evaluator desirable
 
         # distance_to_object = self.get_body_com("object") - self.get_body_com("tips_arm")

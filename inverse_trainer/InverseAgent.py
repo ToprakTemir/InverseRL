@@ -34,6 +34,7 @@ class InverseAgent(nn.Module):
         self.action_dim = dataset.action_space.shape[0]
 
         self.state_evaluator = StateEvaluator(self.state_dim)
+        self.state_evaluator_trained = False
 
         self.inverse_trainer_environment: InverseTrainerEnv | None = None
         self.inverse_model: PPO | None = None
@@ -90,24 +91,33 @@ class InverseAgent(nn.Module):
             if i % 1000 == 0:
                 np.save(differences_log_path, difference_logs)
 
+        self.state_evaluator_trained = True
+
 
 
     def save_state_evaluator(self):
         time = datetime.now().strftime('%m.%d-%H:%M')
         torch.save(self.state_evaluator.state_dict(), f"./models/state_evaluators/state_evaluator_{time}.pth")
 
-    def load_state_evaluator(self, state_evaluator):
-        self.state_evaluator = state_evaluator
+    def load_state_evaluator(self, state_evaluator_path):
+        weights = torch.load(state_evaluator_path)
+        self.state_evaluator.load_state_dict(weights)
+        self.state_evaluator_trained = True
 
     def create_inverse_RL_environment(self):
         """
         Creates the RL environment that will teach the inverse skill using the trained state evaluator.
         """
-        simulation_environment = self.dataset.recover_environment()
+        if not self.state_evaluator_trained:
+            raise Exception("State evaluator is not trained yet.")
+
+        simulation_environment = self.dataset.recover_environment().unwrapped
         trainer_env = InverseTrainerEnv(self.state_evaluator, self.dataset, simulation_environment)
         self.inverse_trainer_environment = trainer_env
 
     def train_inverse_model(self):
+
+        self.create_inverse_RL_environment()
         env = self.inverse_trainer_environment
 
         inverse_model = PPO("MlpPolicy", env=self.inverse_trainer_environment, verbose=1)
@@ -138,8 +148,9 @@ if __name__ == "__main__":
 
     inverse_agent = InverseAgent(dataset)
 
-    inverse_agent.train_state_evaluator()
-    inverse_agent.save_state_evaluator()
+    # inverse_agent.train_state_evaluator()
+    # inverse_agent.save_state_evaluator()
+    inverse_agent.load_state_evaluator("./models/state_evaluators/state_evaluator_02.05-17:45.pth")
 
     inverse_agent.train_inverse_model()
     inverse_agent.save_inverse_model()
