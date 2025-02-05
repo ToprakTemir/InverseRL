@@ -74,6 +74,8 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
 
     def step(self, action):
 
+        print("step requested")
+
         obs, _, terminated, truncated, info = self.env.step(action)
         reward, reward_info = self._get_rew(obs, action)
 
@@ -101,6 +103,8 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
         """
         sets the environment to a random initial state similar to a moment in the dataset.
         """
+
+        print("reset requested")
 
         sampled_episode = list(self.dataset.sample_episodes(1))[0]
         sample_time = np.random.randint(0, len(sampled_episode))

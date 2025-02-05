@@ -119,25 +119,28 @@ class InverseAgent(nn.Module):
         return trainer_env
 
     def make_env(self):
-        return self.inverse_trainer_environment
+        return self.create_inverse_RL_environment()
 
     def train_inverse_model(self):
 
         self.create_inverse_RL_environment()
 
-        num_envs = multiprocessing.cpu_count()
+        num_envs = multiprocessing.cpu_count() // 8
         env = SubprocVecEnv([self.make_env for _ in range(num_envs)])
 
-        inverse_model = PPO("MlpPolicy", env=env, verbose=1)
+        inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
 
         total_timesteps = self.num_steps_for_inverse_skill
-        checkpoint_callback = CheckpointCallback(save_freq=total_timesteps//100, save_path="./models/inverse_model_logs/")
-        stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=total_timesteps//100, verbose=1)
+        save_freq = 100_000
+        report_freq = 1
+
+        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="./models/inverse_model_logs/")
+        stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
         eval_callback = EvalCallback(
             env,
             best_model_save_path="./models/inverse_model_logs/",
             log_path="./models/inverse_model_logs/",
-            eval_freq=total_timesteps // 10_000,
+            eval_freq=report_freq,
             callback_after_eval=stop_callback
         )
         callback = [checkpoint_callback, eval_callback]
