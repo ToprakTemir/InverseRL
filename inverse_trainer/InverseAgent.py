@@ -55,7 +55,7 @@ class InverseAgent(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
         # TODO: tune these parameters
-        self.total_steps = 1_000_000
+        self.num_steps_for_state_evaluator = 10_000_000
         # self.batch_size = 128
 
         self.num_steps_for_inverse_skill = 30_000_000
@@ -77,9 +77,9 @@ class InverseAgent(nn.Module):
         t0 = datetime.now()
         time_id = datetime.now().strftime('%m.%d-%H:%M')
         differences_log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
-        difference_logs = np.zeros(self.total_steps)
+        difference_logs = [{"step": i, "difference": 0.0, "predicted": 0.0, "actual": 0.0} for i in range(self.num_steps_for_state_evaluator)]
 
-        for i in range(self.total_steps):
+        for i in range(self.num_steps_for_state_evaluator):
             episode = next(iter(self.dataset.sample_episodes(1)))
             points = episode.observations
 
@@ -90,14 +90,18 @@ class InverseAgent(nn.Module):
             real_timestamp = torch.tensor(point_idx / len(points), dtype=torch.float32)
             loss = self.mse_loss(predicted_timestamp, real_timestamp)
 
-            difference_logs[i] = torch.abs(predicted_timestamp - real_timestamp)
+            difference_logs[i]["difference"] = abs(predicted_timestamp - real_timestamp)
+            difference_logs[i]["predicted"] = predicted_timestamp
+            difference_logs[i]["actual"] = float(real_timestamp)
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
             if i % 1000 == 0:
-                print(f"step: {i}, loss: {loss}, time: {datetime.now() - t0}")
+                print(f"step: {i}, time: {datetime.now() - t0}")
+                print(f"prediction: {predicted_timestamp}, real: {real_timestamp}, loss: {loss}")
+                print()
             if i % 1000 == 0:
                 np.save(differences_log_path, difference_logs)
 
@@ -116,7 +120,7 @@ class InverseAgent(nn.Module):
 
     def create_inverse_RL_environment(self):
         """
-        Creates the RL environment that will teach the inverse skill using the trained state evaluator.
+        Creates the RL environment that will teach the inverse skill by controlling the reward using the trained state evaluator.
         """
         if not self.state_evaluator_trained:
             raise Exception("State evaluator is not trained yet.")
@@ -139,14 +143,14 @@ class InverseAgent(nn.Module):
 
         self.create_inverse_RL_environment()
 
-        num_envs = multiprocessing.cpu_count() // 2
+        num_envs = multiprocessing.cpu_count()
         env = SubprocVecEnv([self.make_env for _ in range(num_envs)])
 
         inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
 
         total_timesteps = self.num_steps_for_inverse_skill
         save_freq = 100_000
-        report_freq = 100
+        report_freq = 1000
 
         checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="./models/inverse_model_logs/")
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
@@ -169,13 +173,13 @@ class InverseAgent(nn.Module):
 
 if __name__ == "__main__":
 
-    dataset = minari.load_dataset("xarm_push_10k-v0")
+    dataset = minari.load_dataset("xarm_push_5k_300steps-v0")
 
     inverse_agent = InverseAgent(dataset)
 
-    # inverse_agent.train_state_evaluator()
-    # inverse_agent.save_state_evaluator()
-    inverse_agent.load_state_evaluator("./models/state_evaluators/state_evaluator_02.05-17:45.pth")
+    inverse_agent.train_state_evaluator()
+    inverse_agent.save_state_evaluator()
+    # inverse_agent.load_state_evaluator("./models/state_evaluators/state_evaluator_02.05-17:45.pth")
 
-    inverse_agent.train_inverse_model()
-    inverse_agent.save_inverse_model()
+    # inverse_agent.train_inverse_model()
+    # inverse_agent.save_inverse_model()

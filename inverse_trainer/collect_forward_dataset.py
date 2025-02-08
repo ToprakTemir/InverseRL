@@ -8,7 +8,7 @@ from gymnasium.envs.registration import register
 register(
     id="XarmPushTrainer-v0",
     entry_point="environments.XarmPushTrainerEnv:PushTrainerEnv",
-    max_episode_steps=300,
+    max_episode_steps=1000,
 )
 
 def collect_forward_demo(dataset_id, num_demos):
@@ -35,7 +35,7 @@ def collect_forward_demo(dataset_id, num_demos):
     )
 
 if __name__ == "__main__":
-    dataset_id = "xarm_push_1k-v0"
-    num_demos = 1_000
+    dataset_id = "xarm_push_5k_1000steps-v0"
+    num_demos = 5_000
     collect_forward_demo(dataset_id, num_demos)
 

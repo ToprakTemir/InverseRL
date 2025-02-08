@@ -96,7 +96,6 @@ class PushTrainerEnv(XarmTableEnv):
 
     def _compute_reward(self, action):
 
-        # ee_pos = super().get_ee_pos()
         obj_pos = super().get_object_position()
 
         left_finger_pos = self.data.body("left_finger").xpos.copy()

@@ -5,22 +5,15 @@ import os
 from gymnasium.envs.registration import register
 
 register(
-    id="XarmEnv-v0",
-    entry_point="environments.XarmTableEnvironment:XarmTableEnv",
-    max_episode_steps=300,
-)
-register(
     id="XarmPushTrainer-v0",
     entry_point="environments.XarmPushTrainerEnv:PushTrainerEnv",
-    max_episode_steps=300,
+    max_episode_steps=1000,
 )
 
 # OPTION = "latest"
 OPTION = "best"
 
-print(f"testing with {OPTION} model")
-
-model_dir_path = "/Users/toprak/InverseRL/learn_push_skill/models/adjusted_gripper/"
+model_dir_path = "/Users/toprak/InverseRL/learn_push_skill/models/adjusted_gripper"
 
 if OPTION == "latest":
     model_directory = os.listdir(model_dir_path)
@@ -34,11 +27,12 @@ if OPTION == "latest":
         if step_count > max_step:
             max_step = step_count
             max_i = i
-    model_path = os.path.abspath(f"{model_dir_path}rl_model_{model_snapshots[max_i][2]}_steps.zip")
+    model_path = os.path.abspath(f"{model_dir_path}/rl_model_{model_snapshots[max_i][2]}_steps.zip")
 
 elif OPTION == "best":
-    model_path = os.path.abspath(f"{model_dir_path}best_model.zip")
+    model_path = os.path.abspath(f"{model_dir_path}/best_model.zip")
 
+print(f"testing with {OPTION} model")
 print(model_path)
 model = PPO.load(model_path)
 
@@ -48,17 +42,7 @@ env = gym.make("XarmPushTrainer-v0", render_mode="human")
 while True:
     observation, _ = env.reset()
     episode_over = False
-    length = 20
     while not episode_over:
         action, _ = model.predict(observation)
-        print(action)
         observation, reward, terminated, truncated, info = env.step(action)
         episode_over = terminated or truncated
-
-        # making the test time multiplied by length
-        if episode_over:
-            length -= 1
-            if length > 0:
-                episode_over = False
-
-

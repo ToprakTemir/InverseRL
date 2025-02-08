@@ -80,9 +80,10 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
         return obs, reward, terminated, truncated, info | reward_info
 
     def _get_rew(self, obs, action):
-
         obs = torch.tensor(obs, dtype=torch.float32)
-        state_reward = - self.state_evaluator(obs).item() # - sign makes negative output from evaluator desirable
+
+        # state_evaluator's output is between 0 and 1, and we want to minimize it, so we give its negative as reward
+        state_reward = - self.state_evaluator(obs).item() * self._reward_state_weight
 
         # distance_to_object = self.get_body_com("object") - self.get_body_com("tips_arm")
         # distance_reward = (1 / np.linalg.norm(distance_to_object)) * self.reward_dist_weight

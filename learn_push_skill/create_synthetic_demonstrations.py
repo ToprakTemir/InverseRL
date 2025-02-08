@@ -89,7 +89,7 @@ initial_joint_angles = None
 robot_base = np.array([0, -1, 0])
 
 # Load the model and data from the MuJoCo XML.
-model = mujoco.MjModel.from_xml_path("/Users/toprak/InverseRL/environments/assets/gymnasium_xml_files/xarm7_tabletop.xml")
+model = mujoco.MjModel.from_xml_path("/Users/toprak/InverseRL/environments/assets/xml_files/xarm7_tabletop.xml")
 data = mujoco.MjData(model)
 
 # def forward_kinematics(model, data, joint_angles):
