@@ -11,17 +11,20 @@ from minari import MinariDataset
 import gymnasium as gym
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from tensorflow.python.keras.utils.version_utils import training
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
 
 from gymnasium.envs.registration import register
+
 register(
     id="InverseTrainerEnv-v0",
     entry_point="inverse_trainer.InverseTrainerEnv:InverseTrainerEnv",
     max_episode_steps=300,
 )
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class InverseAgent(nn.Module):
     """
@@ -35,7 +38,7 @@ class InverseAgent(nn.Module):
     """
 
     def __init__(self,
-                 dataset : MinariDataset,
+                 dataset: MinariDataset,
                  ):
         super(InverseAgent, self).__init__()
 
@@ -43,7 +46,7 @@ class InverseAgent(nn.Module):
         self.state_dim = dataset.observation_space.shape[0]
         self.action_dim = dataset.action_space.shape[0]
 
-        self.state_evaluator = StateEvaluator(self.state_dim)
+        self.state_evaluator = StateEvaluator(self.state_dim).to(device)
         self.state_evaluator_trained = False
 
         self.inverse_trainer_environment: InverseTrainerEnv | None = None
@@ -51,19 +54,17 @@ class InverseAgent(nn.Module):
 
         # HYPERPARAMETERS
         self.lr = 0.001
-        self.mse_loss = nn.MSELoss()
+        self.mse_loss = nn.MSELoss().to(device)
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
-        # TODO: tune these parameters
-        self.num_steps_for_state_evaluator = 10_000_000
-        # self.batch_size = 128
+        self.num_steps_for_state_evaluator = 1_000_000
+        self.batch_size = 128
 
         self.num_steps_for_inverse_skill = 30_000_000
 
         self.classifier_loss_coeff = 1
         self.creator_loss_coeff = 1
         self.cycle_consistency_loss_coeff = 1
-
 
     def train_state_evaluator(self):
         """
@@ -74,44 +75,59 @@ class InverseAgent(nn.Module):
         # but state evaluator is only trained by the demonstrations, what if the RL agent gets to a state that is not in the demonstrations at all,
         # and state evaluator gives a random point, possibly close to 0? Then RL agent will get a reward for that, which is not what we want.
 
+
         t0 = datetime.now()
         time_id = datetime.now().strftime('%m.%d-%H:%M')
-        differences_log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
-        difference_logs = [{"step": i, "difference": 0.0, "predicted": 0.0, "actual": 0.0} for i in range(self.num_steps_for_state_evaluator)]
+        log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
+        training_logs = []
+        model_save_path = f"./models/state_evaluators/state_evaluator_{time_id}.pth"
 
         for i in range(self.num_steps_for_state_evaluator):
-            episode = next(iter(self.dataset.sample_episodes(1)))
-            points = episode.observations
+            # Sample a batch of episodes
+            episodes = list(self.dataset.sample_episodes(self.batch_size))
 
-            point_idx = np.random.randint(0, len(points))
-            point = torch.tensor(points[point_idx], dtype=torch.float32)
+            points_list = []  # To hold the selected points
+            targets_list = []  # To hold the corresponding normalized timestamp targets
+            for ep in episodes:
+                obs = torch.tensor(ep.observations, dtype=torch.float32, device=device)
+                idx = np.random.randint(0, len(obs))
+                points_list.append(obs[idx])
+                targets_list.append(torch.tensor(idx / len(obs)))
 
-            predicted_timestamp = self.state_evaluator(point)
-            real_timestamp = torch.tensor(point_idx / len(points), dtype=torch.float32)
-            loss = self.mse_loss(predicted_timestamp, real_timestamp)
+            batch_points = torch.stack(points_list).to(device)
+            batch_targets = torch.stack(targets_list).to(device)
 
-            difference_logs[i]["difference"] = abs(predicted_timestamp - real_timestamp)
-            difference_logs[i]["predicted"] = predicted_timestamp
-            difference_logs[i]["actual"] = float(real_timestamp)
+            predicted_timestamps = self.state_evaluator(batch_points).squeeze(-1)
+            loss = self.mse_loss(predicted_timestamps, batch_targets)
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
+            training_logs.append(training_logs.append({
+                "step": i,
+                "difference": abs(predicted_timestamps[0] - batch_targets[0]),
+                "predicted": predicted_timestamps[0],
+                "actual": batch_targets[0],
+            }))
+
             if i % 1000 == 0:
                 print(f"step: {i}, time: {datetime.now() - t0}")
-                print(f"prediction: {predicted_timestamp}, real: {real_timestamp}, loss: {loss}")
+                print(f"prediction: {predicted_timestamps[0]}, actual: {batch_targets[0]}, difference: {abs(predicted_timestamps[0] - batch_targets[0])}")
                 print()
-            if i % 1000 == 0:
-                np.save(differences_log_path, difference_logs)
+                np.save(log_path, training_logs)
+                self.save_state_evaluator(path=model_save_path)
+
+
 
         self.state_evaluator_trained = True
 
-
-
-    def save_state_evaluator(self):
+    def save_state_evaluator(self, path=None):
         time = datetime.now().strftime('%m.%d-%H:%M')
-        torch.save(self.state_evaluator.state_dict(), f"./models/state_evaluators/state_evaluator_{time}.pth")
+        if path is None:
+            torch.save(self.state_evaluator.state_dict(), f"./models/state_evaluators/state_evaluator_{time}.pth")
+        else:
+            torch.save(self.state_evaluator.state_dict(), path)
 
     def load_state_evaluator(self, state_evaluator_path):
         weights = torch.load(state_evaluator_path)
@@ -172,7 +188,6 @@ class InverseAgent(nn.Module):
 
 
 if __name__ == "__main__":
-
     dataset = minari.load_dataset("xarm_push_5k_300steps-v0")
 
     inverse_agent = InverseAgent(dataset)
