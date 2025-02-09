@@ -11,7 +11,6 @@ from minari import MinariDataset
 import gymnasium as gym
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement
 from stable_baselines3.common.vec_env import SubprocVecEnv
-from tensorflow.python.keras.utils.version_utils import training
 
 # from StateEvaluator import StateEvaluator
 from StateEvaluator_probabilistic import StateEvaluator
@@ -97,8 +96,8 @@ class InverseAgent(nn.Module):
         time_id = datetime.now().strftime('%m.%d-%H:%M')
         log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
         training_logs = []
-        model_save_path = f"./models/state_evaluators/state_evaluator_{time_id}.pth"
-        best_model_path = f"./models/state_evaluators/best_state_evaluator_{time_id}.pth"
+        model_save_path = f"./models/state_evaluators/probabilistic_state_evaluator_{time_id}.pth"
+        best_model_path = f"./models/state_evaluators/best_probabilistic_state_evaluator_{time_id}.pth"
 
         for i in range(self.num_steps_for_state_evaluator):
             episodes = list(self.dataset.sample_episodes(self.batch_size))
@@ -134,7 +133,7 @@ class InverseAgent(nn.Module):
 
             if i % 1000 == 0 and self.validation_dataset is not None:
                 current_error = 0
-                for i in range(100):
+                for j in range(100):
                     ep = list(self.validation_dataset.sample_episodes(1))[0]
                     obs_idx = np.random.randint(0, len(ep.observations))
                     obs = ep.observations[obs_idx]
@@ -142,7 +141,7 @@ class InverseAgent(nn.Module):
                     obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
                     output = self.state_evaluator(obs)
                     if torch.isnan(output).any():
-                        print(f"NaN encountered in state evaluator output at validation step {i}, skipping this step")
+                        print(f"NaN encountered in state evaluator output at validation of step {i}, skipping this step")
                         continue
 
                     mean = output[:, 0]
@@ -159,15 +158,15 @@ class InverseAgent(nn.Module):
             # --- logging ---
             training_logs.append(training_logs.append({
                 "step": i,
-                "predicted_mean": mean[0],
-                "predicted_std": std[0],
-                "actual": batch_targets[0],
+                "predicted_mean": mean[0].item(),
+                "predicted_std": std[0].item(),
+                "actual": batch_targets[0].item(),
                 "loss": loss.item()
             }))
 
             if i % 1000 == 0:
                 print(f"step: {i}, time: {datetime.now() - t0}")
-                print(f"predicted mean: {mean[0]}, predicted std: {std[0]}, actual: {batch_targets[0]}, loss: {loss.item()}")
+                print(f"predicted mean: {mean[0].item()}, predicted std: {std[0].item()}, actual: {batch_targets[0].item()}, loss: {loss.item()}")
                 print()
                 np.save(log_path, training_logs)
                 self.save_state_evaluator(path=model_save_path)

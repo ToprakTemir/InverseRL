@@ -1,4 +1,5 @@
 import multiprocessing
+import os
 from datetime import datetime
 
 import numpy as np
@@ -32,6 +33,7 @@ class InverseAgent(nn.Module):
 
     def __init__(self,
                  dataset: MinariDataset,
+                 validation_dataset: MinariDataset = None,
                  object_indices_in_obs: list = None
                  ):
         super(InverseAgent, self).__init__()
@@ -39,6 +41,9 @@ class InverseAgent(nn.Module):
         self.dataset = dataset
         self.state_dim = dataset.observation_space.shape[0]
         self.action_dim = dataset.action_space.shape[0]
+
+        self.validation_dataset = validation_dataset
+        self.validation_error = np.inf
 
         self.object_indices_in_obs = object_indices_in_obs
 
@@ -86,6 +91,10 @@ class InverseAgent(nn.Module):
         else:
             self.state_evaluator = StateEvaluator(len(self.object_indices_in_obs)).to(device)
 
+        # IMPORTANT: DON'T FORGET THIS CONTINUE TRAINING PART
+        inverse_agent.load_state_evaluator(f"./models/state_evaluators/state_evaluator_02.09-21:50.pth")
+        inverse_agent.state_evaluator_trained = False
+
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
         t0 = datetime.now()
@@ -93,6 +102,7 @@ class InverseAgent(nn.Module):
         log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
         training_logs = []
         model_save_path = f"./models/state_evaluators/state_evaluator_{time_id}.pth"
+        best_model_path = f"./models/state_evaluators/best_state_evaluator_{time_id}.pth"
 
         for i in range(self.num_steps_for_state_evaluator):
             episodes = list(self.dataset.sample_episodes(self.batch_size))
@@ -119,6 +129,26 @@ class InverseAgent(nn.Module):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            # --- validation and saving best model ---
+
+            if i % 1000 == 0 and self.validation_dataset is not None:
+                with torch.no_grad():
+                    current_error = 0
+                    for j in range(100):
+                        ep = list(self.validation_dataset.sample_episodes(1))[0]
+                        obs_idx = np.random.randint(0, len(ep.observations))
+                        obs = ep.observations[obs_idx]
+                        obs = self.remove_robot_indices(obs)
+                        obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
+                        predicted_timestamp = self.state_evaluator(obs).squeeze(-1)
+                        current_error += self.mse_loss(predicted_timestamp, torch.tensor(ep.observations[obs_idx] / len(ep.observations), dtype=torch.float32, device=device))
+
+                    if current_error > self.validation_error:
+                        self.validation_error = current_error
+                        self.save_state_evaluator(best_model_path)
+                        print(f"new validation best. error: {self.validation_error}")
+
 
             # --- logging ---
             training_logs.append(training_logs.append({
@@ -205,8 +235,9 @@ class InverseAgent(nn.Module):
 
 if __name__ == "__main__":
     dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
+    validation_dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
 
-    inverse_agent = InverseAgent(dataset, object_indices_in_obs=[0, 1, 2])
+    inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, object_indices_in_obs=[0, 1, 2])
 
     inverse_agent.train_state_evaluator()
     inverse_agent.save_state_evaluator()

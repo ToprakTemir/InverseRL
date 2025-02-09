@@ -131,6 +131,9 @@ def plot_evaluator_guesses_compared_to_real_timestamps():
         plt.legend()
         plt.show()
 
+# def plot_probabilistic_evaluator_training_info():
+#     path =
+
 def plot_ppo_evaluations():
     # Path to the .npy file containing numbers
     ppo_evaluations_path = "./models/inverse_model_logs/evaluations.npz"
@@ -159,5 +162,5 @@ def plot_ppo_evaluations():
 if __name__ == "__main__":
 
     plot_evaluator_training_info()
-    # plot_evaluator_guesses_compared_to_real_timestamps()
+    plot_evaluator_guesses_compared_to_real_timestamps()
     # plot_ppo_evaluations()
