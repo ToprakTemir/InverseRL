@@ -151,12 +151,12 @@ class InverseAgent(nn.Module):
 
 
             # --- logging ---
-            training_logs.append(training_logs.append({
+            training_logs.append({
                 "step": i,
                 "difference": abs(predicted_timestamps[0] - batch_targets[0]),
                 "predicted": predicted_timestamps[0],
                 "actual": batch_targets[0],
-            }))
+            })
 
             if i % 1000 == 0:
                 print(f"step: {i}, time: {datetime.now() - t0}")

@@ -90,7 +90,7 @@ class InverseAgent(nn.Module):
         else:
             self.state_evaluator = StateEvaluator(len(self.object_indices_in_obs)).to(device)
 
-        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = optim.Adam(self.state_evaluator.parameters(), lr=self.lr)
 
         t0 = datetime.now()
         time_id = datetime.now().strftime('%m.%d-%H:%M')
@@ -156,13 +156,13 @@ class InverseAgent(nn.Module):
 
 
             # --- logging ---
-            training_logs.append(training_logs.append({
+            training_logs.append({
                 "step": i,
                 "predicted_mean": mean[0].item(),
                 "predicted_std": std[0].item(),
                 "actual": batch_targets[0].item(),
                 "loss": loss.item()
-            }))
+            })
 
             if i % 1000 == 0:
                 print(f"step: {i}, time: {datetime.now() - t0}")
