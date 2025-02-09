@@ -21,12 +21,15 @@ class StateEvaluator(nn.Module):
         )
 
     def forward(self, state):
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+
         output = self.sequential(state)
         mean = output[:, 0].unsqueeze(1)
         std = output[:, 1].unsqueeze(1)
         mean = torch.sigmoid(mean) # make sure mean is between 0 and 1
-        std = F.softplus(std)
-        return torch.cat((mean, std), dim=1)
+        std = F.softplus(std) + 1e-6
+        return torch.stack((mean, std), dim=1)
 
     def get_distribution(self, state):
         mean, std = self.forward(state)

@@ -33,6 +33,7 @@ class InverseAgent(nn.Module):
 
     def __init__(self,
                  dataset: MinariDataset,
+                 validation_dataset: MinariDataset = None,
                  object_indices_in_obs: list = None
                  ):
         super(InverseAgent, self).__init__()
@@ -42,6 +43,9 @@ class InverseAgent(nn.Module):
         self.action_dim = dataset.action_space.shape[0]
 
         self.object_indices_in_obs = object_indices_in_obs
+
+        self.validation_dataset = validation_dataset
+        self.validation_error = np.inf
 
         self.state_evaluator = None
         self.state_evaluator_trained = False
@@ -94,6 +98,7 @@ class InverseAgent(nn.Module):
         log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
         training_logs = []
         model_save_path = f"./models/state_evaluators/state_evaluator_{time_id}.pth"
+        best_model_path = f"./models/state_evaluators/best_state_evaluator_{time_id}.pth"
 
         for i in range(self.num_steps_for_state_evaluator):
             episodes = list(self.dataset.sample_episodes(self.batch_size))
@@ -111,6 +116,10 @@ class InverseAgent(nn.Module):
             batch_targets = torch.stack(targets_list).to(device)
 
             output = self.state_evaluator(batch_points)
+            if torch.isnan(output).any():
+                print(f"NaN encountered in state evaluator output at step {i}, skipping this step")
+                continue
+
             mean = output[:, 0]
             std = output[:, 1]
             dist = torch.distributions.Normal(mean, std)
@@ -120,6 +129,32 @@ class InverseAgent(nn.Module):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            # --- validation and saving best model ---
+
+            if i % 1000 == 0 and self.validation_dataset is not None:
+                current_error = 0
+                for i in range(100):
+                    ep = list(self.validation_dataset.sample_episodes(1))[0]
+                    obs_idx = np.random.randint(0, len(ep.observations))
+                    obs = ep.observations[obs_idx]
+                    obs = self.remove_robot_indices(obs)
+                    obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
+                    output = self.state_evaluator(obs)
+                    if torch.isnan(output).any():
+                        print(f"NaN encountered in state evaluator output at validation step {i}, skipping this step")
+                        continue
+
+                    mean = output[:, 0]
+                    std = output[:, 1]
+                    dist = torch.distributions.Normal(mean, std)
+                    current_error += -dist.log_prob(torch.tensor(obs_idx / len(ep.observations))).item()
+
+                if current_error < self.validation_error:
+                    self.validation_error = current_error
+                    self.save_state_evaluator(path=best_model_path)
+                    print(f"new validation best. error: {current_error}")
+
 
             # --- logging ---
             training_logs.append(training_logs.append({
@@ -206,8 +241,9 @@ class InverseAgent(nn.Module):
 
 if __name__ == "__main__":
     dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
+    validation_dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
 
-    inverse_agent = InverseAgent(dataset, object_indices_in_obs=[0, 1, 2])
+    inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, object_indices_in_obs=[0, 1, 2])
 
     inverse_agent.train_state_evaluator()
     inverse_agent.save_state_evaluator()
