@@ -156,8 +156,6 @@ def plot_ppo_evaluations():
     plt.show()
 
 
-
-
 if __name__ == "__main__":
 
     plot_evaluator_training_info()

@@ -1,0 +1,31 @@
+import torch
+import torch.nn as nn
+
+class StateEvaluator(nn.Module):
+    """
+    StateClassifier is trained on a specific skill, and takes in a state and outputs at what percentage the state is close to the final state of the skill.
+    """
+
+    def __init__(self, state_dim):
+        super(StateEvaluator, self).__init__()
+
+        self.state_dim = state_dim
+
+        self.sequential = nn.Sequential(
+            nn.Linear(state_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+            nn.Linear(128, 2)
+        )
+
+    def forward(self, state):
+        mean, std = self.sequential(state)
+        mean = torch.sigmoid(mean) # make sure mean is between 0 and 1
+        std = torch.softplus(std, dim=1)
+        return mean, std
+
+    def get_distribution(self, state):
+        mean, std = self.forward(state)
+        dist = torch.distributions.Normal(mean, std)
+        return dist
