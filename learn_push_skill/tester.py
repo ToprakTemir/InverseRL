@@ -1,6 +1,7 @@
 from stable_baselines3 import PPO
 import gymnasium as gym
 import os
+import numpy as np
 
 from gymnasium.envs.registration import register
 
@@ -41,8 +42,18 @@ env = gym.make("XarmPushTrainer-v0", render_mode="human")
 
 while True:
     observation, _ = env.reset()
+    print(f"initial distance to robot: {np.linalg.norm(observation[0:2] - [0, -1])}")
     episode_over = False
+    i = 0
     while not episode_over:
         action, _ = model.predict(observation)
         observation, reward, terminated, truncated, info = env.step(action)
         episode_over = terminated or truncated
+        if np.linalg.norm(observation[0:2] - [0, -1]) > 0.9:
+            episode_over = True
+            print(f"episode over, distance to robot: {np.linalg.norm(observation[0:2] - [0, -1])}")
+            break
+        if i % 1000 == 0:
+            print(f"distance to robot: {np.linalg.norm(observation[0:2] - [0, -1])}")
+
+    print()

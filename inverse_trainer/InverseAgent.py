@@ -99,6 +99,10 @@ class InverseAgent(nn.Module):
             points_list = []  # To hold the predictions
             targets_list = []  # To hold the corresponding targets
             for ep in episodes:
+                if len(ep.observations) == 100_000: # IMPORTANT: this is a hack to skip the failed episodes
+                    print("failed episode found, skipping this one")
+                    continue
+
                 obs_idx = np.random.randint(0, len(ep.observations))
                 obs = ep.observations[obs_idx]
                 obs = self.remove_robot_indices(obs)

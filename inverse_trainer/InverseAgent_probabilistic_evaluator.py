@@ -13,7 +13,8 @@ from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback,
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from tensorflow.python.keras.utils.version_utils import training
 
-from StateEvaluator import StateEvaluator
+# from StateEvaluator import StateEvaluator
+from StateEvaluator_probabilistic import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
 
 from gymnasium.envs.registration import register
@@ -109,10 +110,12 @@ class InverseAgent(nn.Module):
             batch_points = torch.stack(points_list).to(device)
             batch_targets = torch.stack(targets_list).to(device)
 
-            predicted_distributions = self.state_evaluator(batch_points).squeeze(-1)
-            # loss is the probability of the target point being selected from the predicted distribution
+            output = self.state_evaluator(batch_points)
+            mean = output[:, 0]
+            std = output[:, 1]
+            dist = torch.distributions.Normal(mean, std)
 
-
+            loss = -dist.log_prob(batch_targets).mean()
 
             optimizer.zero_grad()
             loss.backward()
@@ -121,15 +124,15 @@ class InverseAgent(nn.Module):
             # --- logging ---
             training_logs.append(training_logs.append({
                 "step": i,
-                "difference": abs(predicted_timestamps[0] - batch_targets[0]),
-                "predicted": predicted_timestamps[0],
+                "predicted_mean": mean[0],
+                "predicted_std": std[0],
                 "actual": batch_targets[0],
+                "loss": loss.item()
             }))
 
             if i % 1000 == 0:
                 print(f"step: {i}, time: {datetime.now() - t0}")
-                print(
-                    f"prediction: {predicted_timestamps[0]}, actual: {batch_targets[0]}, difference: {abs(predicted_timestamps[0] - batch_targets[0])}")
+                print(f"predicted mean: {mean[0]}, predicted std: {std[0]}, actual: {batch_targets[0]}, loss: {loss.item()}")
                 print()
                 np.save(log_path, training_logs)
                 self.save_state_evaluator(path=model_save_path)

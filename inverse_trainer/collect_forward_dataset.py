@@ -19,15 +19,14 @@ def collect_forward_demo(dataset_id, num_demos):
     forward_model = PPO.load(forward_model_path)
 
     env = gym.make("XarmPushTrainer-v0")
-    env = DataCollector(env, record_infos=False, )
+    env = DataCollector(env, record_infos=False)
 
     successful_demo_count = 0
     while successful_demo_count < num_demos:
         print(f"collecting {successful_demo_count}th demo")
 
         observation, _ = env.reset()
-        initial_object_pos = observation[0:2]
-        print(f"initial object pos: {initial_object_pos}, distance to robot: {np.linalg.norm(observation[0:2] - [0, -1])}")
+        print(f"initial distance to robot: {np.linalg.norm(observation[0:2] - [0, -1])}")
 
         episode_over = False
         successful = False
@@ -60,7 +59,6 @@ def collect_forward_demo(dataset_id, num_demos):
 
 
 if __name__ == "__main__":
-    dataset_id = "xarm_push_only_successful_1k-v0"
-    num_demos = 1_000
+    dataset_id = "xarm_push_only_successful_5k-v0"
+    num_demos = 5_000
     collect_forward_demo(dataset_id, num_demos)
-
