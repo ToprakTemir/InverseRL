@@ -18,9 +18,13 @@ def plot_evaluator_training_info():
         sigma (float): The standard deviation for the Gaussian kernel used to smooth the differences.
     """
     # Path to the .npy file containing numbers.
-    evaluator_differences_path = "./logs/state_evaluator_differences_02.09-21:50.npy"
+    evaluator_differences_path = "./logs/state_evaluator_differences_02.10-00:41.npy"
     training_data = np.load(evaluator_differences_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
+
+    training_data = training_data[::100]
+
+    print("here")
 
     # Extract columns: assuming the columns are [steps, differences, predicted, actual].
 
@@ -35,32 +39,18 @@ def plot_evaluator_training_info():
         predicted[i] = training_data[i]["predicted"]
         actual[i] = training_data[i]["actual"]
 
-    thin_coeff = 10000
-    steps_thinned = steps[::thin_coeff]
-    predicted_thinned = predicted[::thin_coeff]
-    actual_thinned = actual[::thin_coeff]
-
-    predictions_smoothed = gaussian_filter1d(predicted, sigma=1_000)
-    actual_smoothed = gaussian_filter1d(actual, sigma=1_000)
-
-    # # ----------------------------
-    # # Plot 1: Predicted vs Actual
-    # # ----------------------------
-    # plt.figure(figsize=(10, 6))
-    # plt.plot(steps, predictions_smoothed, label="Predicted", linewidth=2)
-    # plt.plot(steps, actual_smoothed, label="Actual", linewidth=2)
-    # plt.xlabel("Steps")
-    # plt.ylabel("Value")
-    # plt.title("Predicted vs Actual")
-    # plt.legend()
-    # plt.grid(True)
-    # plt.tight_layout()
-    # plt.show()
-
     # -------------------------------------------
-    # Plot 2: Smoothed Differences (Predicted - Actual)
+    # Plot: Smoothed Differences (Predicted - Actual)
     # -------------------------------------------
-    smoothed_diff = gaussian_filter1d(differences, sigma=1_000)
+
+    # use exponential moving average for smoothing
+    alpha = 0.0001
+
+    smoothed_diff = np.zeros_like(differences)
+    smoothed_diff[0] = differences[0]
+    for i in range(1, len(differences)):
+        smoothed_diff[i] = alpha * differences[i] + (1 - alpha) * smoothed_diff[i - 1]
+
 
     plt.figure(figsize=(10, 6))
     plt.plot(steps, smoothed_diff, label=f"Smoothed Differences", linewidth=2)
@@ -76,22 +66,18 @@ def plot_evaluator_training_info():
 
 def plot_evaluator_guesses_compared_to_real_timestamps():
     # Load dataset, environment, and the state evaluator model
-    state_evaluator_path = "./models/state_evaluators/state_evaluator_02.09-21:50.pth"
+    state_evaluator_path = "./models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
     dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
-    env = dataset.recover_environment()
 
     state_evaluator = StateEvaluator(3)
     state_evaluator.load_state_dict(torch.load(state_evaluator_path))
 
     # ===== CONFIGURATION =====
-    num_episodes_to_plot = 1  # Change this to plot more episodes at once
+    num_episodes_to_plot = 10  # Change this to plot more episodes at once
     plot_style = "scatter"  # Options: "scatter" or "line"
     # =========================
 
-    # Convert the generator to a list to allow random sampling
     episodes = list(dataset.iterate_episodes())
-
-    # Randomly sample episodes to plot
     episodes_to_plot = random.sample(episodes, num_episodes_to_plot)
 
     for ep_num, episode in enumerate(episodes_to_plot, start=1):
@@ -116,13 +102,13 @@ def plot_evaluator_guesses_compared_to_real_timestamps():
         # Create a new figure for each episode
         plt.figure()
         if plot_style == "scatter":
-            plt.scatter(actual_timestamps, predicted_timestamps, label="Predicted")
+            plt.scatter(actual_timestamps, predicted_timestamps, label="Predicted", s=10)
         elif plot_style == "line":
-            plt.plot(actual_timestamps, predicted_timestamps, marker="o", label="Predicted")
+            plt.plot(actual_timestamps, predicted_timestamps, marker="o", label="Predicted", linewidth=0.5)
         else:
             raise ValueError(f"Unknown plot_style: {plot_style}")
 
-        # Optionally, you can plot the diagonal line (perfect prediction) for reference
+        # plot the diagonal line (perfect prediction) for reference
         plt.plot([0, 1], [0, 1], "k--", label="Ideal")
 
         plt.xlabel("Actual Timestamp")

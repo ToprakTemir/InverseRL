@@ -132,7 +132,7 @@ class InverseAgent(nn.Module):
 
             # --- validation and saving best model ---
 
-            if i % 1000 == 0 and self.validation_dataset is not None:
+            if i % 100 == 0 and self.validation_dataset is not None:
                 with torch.no_grad():
                     current_error = 0
                     for j in range(100):
@@ -144,7 +144,7 @@ class InverseAgent(nn.Module):
                         predicted_timestamp = self.state_evaluator(obs).squeeze(-1)
                         current_error += self.mse_loss(predicted_timestamp, torch.tensor(ep.observations[obs_idx] / len(ep.observations), dtype=torch.float32, device=device))
 
-                    if current_error > self.validation_error:
+                    if current_error < self.validation_error:
                         self.validation_error = current_error
                         self.save_state_evaluator(best_model_path)
                         print(f"new validation best. error: {self.validation_error}")
