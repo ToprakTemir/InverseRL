@@ -24,8 +24,6 @@ def plot_evaluator_training_info():
 
     training_data = training_data[::100]
 
-    print("here")
-
     # Extract columns: assuming the columns are [steps, differences, predicted, actual].
 
     l = len(training_data)
@@ -73,13 +71,15 @@ def plot_evaluator_guesses_compared_to_real_timestamps():
     state_evaluator.load_state_dict(torch.load(state_evaluator_path))
 
     # ===== CONFIGURATION =====
-    num_episodes_to_plot = 10  # Change this to plot more episodes at once
-    plot_style = "scatter"  # Options: "scatter" or "line"
+    num_episodes_to_plot = 5  # Change this to plot more episodes at once
+    plot_style = "line"  # Options: "scatter" or "line"
+    colors = plt.cm.get_cmap('tab10', num_episodes_to_plot)  # Get a colormap for distinct colors
     # =========================
 
     episodes = list(dataset.iterate_episodes())
     episodes_to_plot = random.sample(episodes, num_episodes_to_plot)
 
+    plt.figure(figsize=(12, 8))  # Create a single figure for all episodes
     for ep_num, episode in enumerate(episodes_to_plot, start=1):
         total_steps = len(episode.observations)
         actual_timestamps = []
@@ -87,35 +87,36 @@ def plot_evaluator_guesses_compared_to_real_timestamps():
 
         # Collect timestamps for each step in the episode
         for step_idx, obs in enumerate(episode.observations):
-            # Convert observation to a float tensor (adjust dtype if needed)
             obs_tensor = torch.tensor(obs, dtype=torch.float32)
             obs_tensor_only_object = obs_tensor[0:3]  # IMPORTANT: indexes dependent on environment
             predicted = state_evaluator(obs_tensor_only_object)
-            predicted_value = predicted.item()  # convert tensor to scalar
+            predicted_value = predicted.item()  # Convert tensor to scalar
 
             # Compute the actual timestamp (linearly increasing)
             actual = step_idx / total_steps
-
             actual_timestamps.append(actual)
             predicted_timestamps.append(predicted_value)
 
-        # Create a new figure for each episode
-        plt.figure()
+        # Plot each episode with a different color and label
         if plot_style == "scatter":
-            plt.scatter(actual_timestamps, predicted_timestamps, label="Predicted", s=10)
+            plt.scatter(actual_timestamps, predicted_timestamps, label=f"Episode {ep_num}",
+                        s=5, color=colors(ep_num - 1))  # Smaller size for better clarity
         elif plot_style == "line":
-            plt.plot(actual_timestamps, predicted_timestamps, marker="o", label="Predicted", linewidth=0.5)
+            plt.plot(actual_timestamps, predicted_timestamps, marker="o", label=f"Episode {ep_num}",
+                     linewidth=2, markersize=2, color=colors(ep_num - 1))
         else:
             raise ValueError(f"Unknown plot_style: {plot_style}")
 
-        # plot the diagonal line (perfect prediction) for reference
-        plt.plot([0, 1], [0, 1], "k--", label="Ideal")
+    # Plot the diagonal line (perfect prediction) for reference
+    plt.plot([0, 1], [0, 1], "k--", label="Ideal")
 
-        plt.xlabel("Actual Timestamp")
-        plt.ylabel("Predicted Timestamp")
-        plt.title(f"Episode {ep_num}")
-        plt.legend()
-        plt.show()
+    plt.xlabel("Actual Timestamp")
+    plt.ylabel("Predicted Timestamp")
+    plt.title("Predicted vs Actual Timestamps (All Episodes)")
+    plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize=8)  # Move legend outside the plot
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 # def plot_probabilistic_evaluator_training_info():
 #     path =
@@ -147,6 +148,6 @@ def plot_ppo_evaluations():
 
 if __name__ == "__main__":
 
-    plot_evaluator_training_info()
+    # plot_evaluator_training_info()
     plot_evaluator_guesses_compared_to_real_timestamps()
     # plot_ppo_evaluations()

@@ -239,9 +239,9 @@ if __name__ == "__main__":
 
     inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, object_indices_in_obs=[0, 1, 2])
 
-    inverse_agent.train_state_evaluator()
-    inverse_agent.save_state_evaluator()
-    # inverse_agent.load_state_evaluator("./models/state_evaluators/state_evaluator_02.05-17:45.pth")
+    # inverse_agent.train_state_evaluator()
+    # inverse_agent.save_state_evaluator()
+    inverse_agent.load_state_evaluator("./models/state_evaluators/best_state_evaluator_02.10-00:41.pth")
 
-    # inverse_agent.train_inverse_model()
-    # inverse_agent.save_inverse_model()
+    inverse_agent.train_inverse_model()
+    inverse_agent.save_inverse_model()
