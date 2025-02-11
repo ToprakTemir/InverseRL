@@ -5,15 +5,16 @@ import os
 import minari
 
 from StateEvaluator import StateEvaluator
+from InverseTrainerEnv import InverseTrainerEnv
 
 from gymnasium.envs.registration import register
 register(
-    id="InverseTrainerEnvironment-v0",
-    entry_point="inverse_trainer.InverseTrainerEnv:InverseTrainerEnv",
+    id="XarmPushEnv-v0",
+    entry_point="environments.XarmTableEnvironment:XarmTableEnv",
     max_episode_steps=300,
 )
 
-model_dir_path = "/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_logs"
+model_dir_path = "/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_logs/02.11-13:25"
 
 # OPTION = "latest"
 OPTION = "best"
@@ -30,41 +31,32 @@ if OPTION == "latest":
         if step_count > max_step:
             max_step = step_count
             max_i = i
-    model_path = os.path.abspath(f"{model_dir_path}rl_model_{model_snapshots[max_i][2]}_steps.zip")
+    model_path = os.path.abspath(f"{model_dir_path}/rl_model_{model_snapshots[max_i][2]}_steps.zip")
 
 elif OPTION == "best":
     model_path = os.path.abspath(f"{model_dir_path}/best_model.zip")
 
 model = PPO.load(model_path)
 
-state_evaluator_path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/state_evaluator_02.05-17:45.pth"
-state_evaluator = StateEvaluator(14)
-state_evaluator.load_state_dict(torch.load(state_evaluator_path))
+non_robot_indices_in_observation = [0, 1, 2]
 
-dataset = minari.load_dataset("xarm_push_10k-v0")
-simulation_environment = dataset.recover_environment().unwrapped
-simulation_environment.render_mode = "human"
+state_evaluator = StateEvaluator(len(non_robot_indices_in_observation))
+state_evaluator_path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
+state_evaluator.load_state_dict(torch.load(state_evaluator_path, map_location=torch.device('cpu')))
 
-env = gym.make(
-"InverseTrainerEnvironment-v0",
-    render_mode="human",
-    state_evaluator=state_evaluator,
-    dataset=dataset,
-    env=simulation_environment
-)
+dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
+env = dataset.recover_environment().unwrapped
+env = InverseTrainerEnv(state_evaluator, dataset, env, non_robot_indices_in_obs=non_robot_indices_in_observation)
+env.env.render_mode = "human"
 
-# env = simulation_environment
-# env.render_mode = "human"
-
-for _ in range(1):
+while True:
     observation, _ = env.reset()
     episode_over = False
     i = 0
     while not episode_over:
-        print(f"observation: {observation}")
         action, _ = model.predict(observation)
-        print(f"action: {action}")
         observation, reward, terminated, truncated, reward_terms = env.step(action)
+
         episode_over = terminated or truncated or i > 300
         i += 1
 

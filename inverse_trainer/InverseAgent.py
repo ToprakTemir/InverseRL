@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from gymnasium.envs.mujoco import MujocoEnv
 from stable_baselines3 import PPO
 import minari
 from minari import MinariDataset
@@ -34,7 +35,7 @@ class InverseAgent(nn.Module):
     def __init__(self,
                  dataset: MinariDataset,
                  validation_dataset: MinariDataset = None,
-                 object_indices_in_obs: list = None
+                 non_robot_indices_in_obs: list = None
                  ):
         super(InverseAgent, self).__init__()
 
@@ -45,7 +46,7 @@ class InverseAgent(nn.Module):
         self.validation_dataset = validation_dataset
         self.validation_error = np.inf
 
-        self.object_indices_in_obs = object_indices_in_obs
+        self.non_robot_indices_in_obs = non_robot_indices_in_obs
 
         self.state_evaluator = None
         self.state_evaluator_trained = False
@@ -70,13 +71,30 @@ class InverseAgent(nn.Module):
         """
         only uses the object indices in the observation, removing the robot indices
         """
-        if self.object_indices_in_obs is None:
+        if self.non_robot_indices_in_obs is None:
             # print("object_indices_in_obs is None, returning the whole observation")
             return obs
         else:
-            return obs[self.object_indices_in_obs]
+            return obs[self.non_robot_indices_in_obs]
 
-    def train_state_evaluator(self):
+    def create_state_evaluator(self, state_evaluator_path=None, device=device):
+        # Create a state evaluator
+        if self.non_robot_indices_in_obs is None:
+            print("object_indices_in_obs is None, using the whole observation for StateEvaluator")
+            self.state_evaluator = StateEvaluator(self.state_dim).to(device)
+        else:
+            self.state_evaluator = StateEvaluator(len(self.non_robot_indices_in_obs)).to(device)
+
+        # Load weights if path is specified
+        if state_evaluator_path is not None:
+            if device == torch.device('cpu'):
+                weights = torch.load(state_evaluator_path, map_location=torch.device('cpu'))
+            else:
+                weights = torch.load(state_evaluator_path)
+            self.state_evaluator.load_state_dict(weights)
+            self.state_evaluator_trained = True
+
+    def train_state_evaluator(self, load_state_eval_from_path=None):
         """
         trains the state evaluator to predict the timestamp of a given point in the trajectory
         """
@@ -85,15 +103,6 @@ class InverseAgent(nn.Module):
         # but state evaluator is only trained by the demonstrations, what if the RL agent gets to a state that is not in the demonstrations at all,
         # and state evaluator gives a random point, possibly close to 0? Then RL agent will get a reward for that, which is not what we want.
 
-        if self.object_indices_in_obs is None:
-            print("object_indices_in_obs is None, using the whole observation for StateEvaluator")
-            self.state_evaluator = StateEvaluator(self.state_dim).to(device)
-        else:
-            self.state_evaluator = StateEvaluator(len(self.object_indices_in_obs)).to(device)
-
-        # IMPORTANT: DON'T FORGET THIS CONTINUE TRAINING PART
-        inverse_agent.load_state_evaluator(f"./models/state_evaluators/state_evaluator_02.09-21:50.pth")
-        inverse_agent.state_evaluator_trained = False
 
         optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
@@ -109,7 +118,7 @@ class InverseAgent(nn.Module):
             points_list = []  # To hold the predictions
             targets_list = []  # To hold the corresponding targets
             for ep in episodes:
-                if len(ep.observations) == 100_000: # IMPORTANT: this is a hack to skip the failed episodes
+                if len(ep.observations) == 100_000: # WARNING: this is hardcoded and specific only to my case to skip the failed episodes
                     print("failed episode found, skipping this one")
                     continue
 
@@ -175,11 +184,6 @@ class InverseAgent(nn.Module):
         else:
             torch.save(self.state_evaluator.state_dict(), path)
 
-    def load_state_evaluator(self, state_evaluator_path):
-        weights = torch.load(state_evaluator_path)
-        self.state_evaluator.load_state_dict(weights)
-        self.state_evaluator_trained = True
-
     def create_inverse_RL_environment(self):
         """
         Creates the RL environment that will teach the inverse skill by controlling the reward using the trained state evaluator.
@@ -188,44 +192,48 @@ class InverseAgent(nn.Module):
             raise Exception("State evaluator is not trained yet.")
 
         simulation_environment = self.dataset.recover_environment().unwrapped
+        assert isinstance(simulation_environment, MujocoEnv)
 
-        trainer_env = gym.make(
-            "InverseTrainerEnv-v0",
-            state_evaluator=self.state_evaluator,
-            dataset=self.dataset,
-            env=simulation_environment
-        )
+        trainer_env = InverseTrainerEnv(self.state_evaluator, self.dataset, simulation_environment, self.non_robot_indices_in_obs)
         self.inverse_trainer_environment = trainer_env
+
         return trainer_env
 
-    def make_env(self):
-        return self.create_inverse_RL_environment()
+    def train_inverse_model(self, load_state_evaluator_from_path=None, device=device):
 
-    def train_inverse_model(self):
+        # --- setup ---
 
-        self.create_inverse_RL_environment()
+        self.create_state_evaluator(state_evaluator_path=load_state_evaluator_from_path, device=device)
 
         num_envs = multiprocessing.cpu_count()
-        env = SubprocVecEnv([self.make_env for _ in range(num_envs)])
+        env = SubprocVecEnv([self.create_inverse_RL_environment for _ in range(num_envs)])
 
         inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
+
+        # --- log and save stuff ---
+
+        time = datetime.now().strftime('%m.%d-%H:%M')
+        model_path = f"./models/inverse_model_logs/{time}"
+        os.mkdir(model_path)
 
         total_timesteps = self.num_steps_for_inverse_skill
         save_freq = 100_000
         report_freq = 1000
 
-        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="./models/inverse_model_logs/")
+        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_path)
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
         eval_callback = EvalCallback(
             env,
-            best_model_save_path="./models/inverse_model_logs/",
-            log_path="./models/inverse_model_logs/",
+            best_model_save_path=model_path,
+            log_path=model_path,
             eval_freq=report_freq,
             callback_after_eval=stop_callback
         )
         callback = [checkpoint_callback, eval_callback]
-        inverse_model.learn(total_timesteps=total_timesteps, callback=callback)
 
+        # --- training ---
+
+        inverse_model.learn(total_timesteps=total_timesteps, callback=callback)
         self.inverse_model = inverse_model
 
     def save_inverse_model(self):
@@ -237,11 +245,11 @@ if __name__ == "__main__":
     dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
     validation_dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
 
-    inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, object_indices_in_obs=[0, 1, 2])
+    inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
     # inverse_agent.train_state_evaluator()
     # inverse_agent.save_state_evaluator()
-    inverse_agent.load_state_evaluator("./models/state_evaluators/best_state_evaluator_02.10-00:41.pth")
+    path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
 
-    inverse_agent.train_inverse_model()
+    inverse_agent.train_inverse_model(load_state_evaluator_from_path=path, device=device)
     inverse_agent.save_inverse_model()

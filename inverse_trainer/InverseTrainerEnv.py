@@ -1,78 +1,42 @@
-from typing import Dict, Union
-
 import numpy as np
 import torch
 
+import gymnasium as gym
 from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
-from gymnasium.spaces import Box
 import minari
+from numpy.f2py.auxfuncs import isint1
+from tensorflow.python.ops.numpy_ops.np_dtypes import object_
 
 from StateEvaluator import StateEvaluator
 
-DEFAULT_CAMERA_CONFIG = {
-    "trackbodyid": -1,
-    "distance": 4.0,
-}
 
-
-class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
-    metadata = {
-        "render_modes": [
-            "human",
-            "rgb_array",
-            "depth_array",
-        ],
-    }
+class InverseTrainerEnv(gym.Wrapper):
 
     def __init__(
             self,
             state_evaluator : StateEvaluator,
             dataset: minari.MinariDataset,
             env: MujocoEnv,
+            non_robot_indices_in_obs: list = None,
             state_reward_weight = 1,
-            reward_dist_weight = 0.5,
-            reward_control_weight: float = 0.1,
+            reward_control_weight = 0.1,
             **kwargs,
     ):
-        utils.EzPickle.__init__(
-            self,
-            state_evaluator,
-            dataset,
-            env,
-            state_reward_weight,
-            reward_dist_weight,
-            reward_control_weight,
-            **kwargs,
-        )
+        super().__init__(env)
 
         self.state_evaluator = state_evaluator
         self.dataset = dataset
-        self.env = env
+        self.non_robot_indices_in_obs = non_robot_indices_in_obs
 
-        self._reward_control_weight = reward_control_weight
-        self.reward_dist_weight = reward_dist_weight
-        self._reward_state_weight = state_reward_weight
-
-        MujocoEnv.__init__(
-            self,
-            model_path=env.fullpath,
-            frame_skip=env.frame_skip,
-            observation_space=env.observation_space,
-            default_camera_config=DEFAULT_CAMERA_CONFIG,
-            **kwargs,
-        )
-        self.metadata = {
-            "render_modes": [
-                "human",
-                "rgb_array",
-                "depth_array",
-            ],
-            "render_fps": int(np.round(1.0 / self.dt)),
-        }
+        self.reward_control_weight = reward_control_weight
+        self.reward_state_weight = state_reward_weight
 
 
     def step(self, action):
+        """
+        Overrides the step method of the environment, only changes the reward calculation.
+        """
 
         obs, _, terminated, truncated, info = self.env.step(action)
         reward, reward_info = self._get_rew(obs, action)
@@ -82,13 +46,16 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
     def _get_rew(self, obs, action):
         obs = torch.tensor(obs, dtype=torch.float32)
 
+        if self.non_robot_indices_in_obs is not None:
+            obs = obs[self.non_robot_indices_in_obs]
+
         # state_evaluator's output is between 0 and 1, and we want to minimize it, so we give its negative as reward
-        state_reward = 1 - self.state_evaluator(obs).item() * self._reward_state_weight
+        state_reward = 1 - self.state_evaluator(obs).item() * self.reward_state_weight
 
         # distance_to_object = self.get_body_com("object") - self.get_body_com("tips_arm")
         # distance_reward = (1 / np.linalg.norm(distance_to_object)) * self.reward_dist_weight
 
-        ctrl_penalty = np.square(action).sum() * self._reward_control_weight
+        ctrl_penalty = np.square(action).sum() * self.reward_control_weight
 
         reward = state_reward - ctrl_penalty
 
@@ -102,17 +69,22 @@ class InverseTrainerEnv(MujocoEnv, utils.EzPickle):
         """
         sets the environment to a random initial state similar to a moment in the dataset.
         """
+        assert isinstance(self.env, MujocoEnv)
 
         sampled_episode = list(self.dataset.sample_episodes(1))[0]
         sample_time = np.random.randint(0, len(sampled_episode))
+        object_obs_at_sample_time = sampled_episode.observations[sample_time][self.non_robot_indices_in_obs]
 
         # TODO: check if always started from a given point (this method) results in high enough variety.
         # if not, a solution could be training a CNMP to learn the forward skill, and then sample an episode from it.
 
-        self.env.reset()
-        for i in range(sample_time-1):
-            self.env.step(sampled_episode.actions[i])
+        obs = self.env.reset()
+        obs = obs[0] # obs is given as a tuple of the observation as a list and the extra information dictionary. We only need the observation list
 
-        obs, _, _, _, _ = self.env.step(sampled_episode.actions[sample_time-1])
+        qpos = self.env.init_qpos.copy()
+        qpos[self.non_robot_indices_in_obs] = object_obs_at_sample_time # WARNING: this indexes aren't necessarily coincide for every environment. But it is correct for my xarm test scene
+        self.env.set_state(qpos, self.env.init_qvel.copy())
+
+        obs[self.non_robot_indices_in_obs] = object_obs_at_sample_time
 
         return obs
