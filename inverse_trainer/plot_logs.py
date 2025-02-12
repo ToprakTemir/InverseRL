@@ -18,11 +18,9 @@ def plot_evaluator_training_info():
         sigma (float): The standard deviation for the Gaussian kernel used to smooth the differences.
     """
     # Path to the .npy file containing numbers.
-    evaluator_differences_path = "./logs/state_evaluator_differences_02.10-00:41.npy"
+    evaluator_differences_path = "./logs/state_evaluator_differences_02.12-01:28.npy"
     training_data = np.load(evaluator_differences_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
-
-    training_data = training_data[::100]
 
     # Extract columns: assuming the columns are [steps, differences, predicted, actual].
 
@@ -42,7 +40,7 @@ def plot_evaluator_training_info():
     # -------------------------------------------
 
     # use exponential moving average for smoothing
-    alpha = 0.0001
+    alpha = 0.001
 
     smoothed_diff = np.zeros_like(differences)
     smoothed_diff[0] = differences[0]
@@ -64,15 +62,15 @@ def plot_evaluator_training_info():
 
 def plot_evaluator_guesses_compared_to_real_timestamps():
     # Load dataset, environment, and the state evaluator model
-    state_evaluator_path = "./models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
-    dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
+    state_evaluator_path = "./models/state_evaluators/state_evaluator_02.12-01:28.pth"
+    dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
 
     state_evaluator = StateEvaluator(3)
     state_evaluator.load_state_dict(torch.load(state_evaluator_path))
 
     # ===== CONFIGURATION =====
     num_episodes_to_plot = 5  # Change this to plot more episodes at once
-    plot_style = "line"  # Options: "scatter" or "line"
+    plot_style = "scatter"  # Options: "scatter" or "line"
     colors = plt.cm.get_cmap('tab10', num_episodes_to_plot)  # Get a colormap for distinct colors
     # =========================
 
@@ -148,6 +146,6 @@ def plot_ppo_evaluations():
 
 if __name__ == "__main__":
 
-    # plot_evaluator_training_info()
+    plot_evaluator_training_info()
     plot_evaluator_guesses_compared_to_real_timestamps()
     # plot_ppo_evaluations()

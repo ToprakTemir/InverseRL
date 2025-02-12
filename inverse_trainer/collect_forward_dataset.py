@@ -59,6 +59,6 @@ def collect_forward_demo(dataset_id, num_demos):
 
 
 if __name__ == "__main__":
-    dataset_id = "xarm_push_only_successful_5k-v0"
-    num_demos = 5_000
+    dataset_id = "xarm_push_only_successful_50-v0"
+    num_demos = 50
     collect_forward_demo(dataset_id, num_demos)

@@ -94,7 +94,8 @@ class InverseAgent(nn.Module):
             self.state_evaluator.load_state_dict(weights)
             self.state_evaluator_trained = True
 
-    def train_state_evaluator(self, load_state_eval_from_path=None):
+
+    def train_state_evaluator(self, load_state_evaluator_from_path=None, device=None):
         """
         trains the state evaluator to predict the timestamp of a given point in the trajectory
         """
@@ -103,8 +104,9 @@ class InverseAgent(nn.Module):
         # but state evaluator is only trained by the demonstrations, what if the RL agent gets to a state that is not in the demonstrations at all,
         # and state evaluator gives a random point, possibly close to 0? Then RL agent will get a reward for that, which is not what we want.
 
+        self.create_state_evaluator(state_evaluator_path=load_state_evaluator_from_path, device=device)
 
-        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = optim.Adam(self.state_evaluator.parameters(), lr=self.lr)
 
         t0 = datetime.now()
         time_id = datetime.now().strftime('%m.%d-%H:%M')
@@ -114,7 +116,9 @@ class InverseAgent(nn.Module):
         best_model_path = f"./models/state_evaluators/best_state_evaluator_{time_id}.pth"
 
         for i in range(self.num_steps_for_state_evaluator):
-            episodes = list(self.dataset.sample_episodes(self.batch_size))
+            indexes = np.random.choice(self.dataset.episode_indices, size=self.batch_size, replace=True)
+            episodes = self.dataset.iterate_episodes(indexes)
+
             points_list = []  # To hold the predictions
             targets_list = []  # To hold the corresponding targets
             for ep in episodes:
@@ -157,6 +161,8 @@ class InverseAgent(nn.Module):
                         self.validation_error = current_error
                         self.save_state_evaluator(best_model_path)
                         print(f"new validation best. error: {self.validation_error}")
+                    else:
+                        print(f"validation error: {current_error}")
 
 
             # --- logging ---
@@ -199,11 +205,9 @@ class InverseAgent(nn.Module):
 
         return trainer_env
 
-    def train_inverse_model(self, load_state_evaluator_from_path=None, device=device):
+    def train_inverse_model(self):
 
         # --- setup ---
-
-        self.create_state_evaluator(state_evaluator_path=load_state_evaluator_from_path, device=device)
 
         num_envs = multiprocessing.cpu_count()
         env = SubprocVecEnv([self.create_inverse_RL_environment for _ in range(num_envs)])
@@ -242,14 +246,15 @@ class InverseAgent(nn.Module):
 
 
 if __name__ == "__main__":
-    dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
+    dataset = minari.load_dataset("xarm_push_only_successful_50-v0")
     validation_dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
 
     inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    # inverse_agent.train_state_evaluator()
-    # inverse_agent.save_state_evaluator()
-    path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
+    # path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
+    path=None
+    inverse_agent.train_state_evaluator(load_state_evaluator_from_path=path, device=device)
+    inverse_agent.save_state_evaluator()
 
-    inverse_agent.train_inverse_model(load_state_evaluator_from_path=path, device=device)
-    inverse_agent.save_inverse_model()
+    # inverse_agent.train_inverse_model(load_state_evaluator_from_path=path, device=device)
+    # inverse_agent.save_inverse_model()
