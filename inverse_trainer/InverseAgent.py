@@ -211,7 +211,7 @@ class InverseAgent(nn.Module):
         env = self.dataset.recover_environment().unwrapped
         input_dim = env.observation_space.shape[0]
         output_dim = env.action_space.shape[0]
-        self.initial_policy = InitialPolicy(input_dim, output_dim)
+        self.initial_policy = InitialPolicy(input_dim, output_dim).to(device)
 
         optimizer = optim.Adam(self.initial_policy.parameters(), lr=self.lr)
 
@@ -245,6 +245,9 @@ class InverseAgent(nn.Module):
             actions_batch = torch.stack(actions_list).to(device)
 
             predicted_actions = self.initial_policy(states_batch)
+            if actions_batch.dim() == 1:
+                actions_batch = actions_batch.unsqueeze(-1)
+
             loss = self.mse_loss(predicted_actions, actions_batch)
 
             optimizer.zero_grad()
@@ -355,7 +358,7 @@ if __name__ == "__main__":
 
     inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
+    path = "./models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
     # path=None
     inverse_agent.train_state_evaluator(load_state_evaluator_from_path=path, device=device)
     # inverse_agent.save_state_evaluator()
