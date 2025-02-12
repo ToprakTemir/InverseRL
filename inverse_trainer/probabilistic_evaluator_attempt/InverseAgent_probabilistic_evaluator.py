@@ -219,12 +219,12 @@ class InverseAgent(nn.Module):
         save_freq = 100_000
         report_freq = 1000
 
-        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="./models/inverse_model_logs/")
+        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="../models/inverse_model_logs/")
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
         eval_callback = EvalCallback(
             env,
-            best_model_save_path="./models/inverse_model_logs/",
-            log_path="./models/inverse_model_logs/",
+            best_model_save_path="../models/inverse_model_logs/",
+            log_path="../models/inverse_model_logs/",
             eval_freq=report_freq,
             callback_after_eval=stop_callback
         )

@@ -17,6 +17,7 @@ from tensorflow.python.keras.utils.version_utils import training
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
+from InitialPolicy import InitialPolicy
 
 from gymnasium.envs.registration import register
 
@@ -50,6 +51,8 @@ class InverseAgent(nn.Module):
 
         self.state_evaluator = None
         self.state_evaluator_trained = False
+        self.initial_policy = None
+        self.initial_policy_trained = False
 
         self.inverse_trainer_environment: InverseTrainerEnv | None = None
         self.inverse_model: PPO | None = None
@@ -58,14 +61,11 @@ class InverseAgent(nn.Module):
         self.lr = 0.001
         self.mse_loss = nn.MSELoss().to(device)
 
-        self.num_steps_for_state_evaluator = 1_000_000
+        self.num_epochs_for_state_evaluator = 1_000_000
+        self.num_epochs_for_initial_policy = 1_000_000
+        self.num_epochs_for_inverse_skill = 1_000_000
         self.batch_size = 128
 
-        self.num_steps_for_inverse_skill = 30_000_000
-
-        self.classifier_loss_coeff = 1
-        self.creator_loss_coeff = 1
-        self.cycle_consistency_loss_coeff = 1
 
     def remove_robot_indices(self, obs) -> np.ndarray:
         """
@@ -106,6 +106,10 @@ class InverseAgent(nn.Module):
 
         self.create_state_evaluator(state_evaluator_path=load_state_evaluator_from_path, device=device)
 
+        if self.state_evaluator_trained:
+            print("state evaluator is already trained")
+            return
+
         optimizer = optim.Adam(self.state_evaluator.parameters(), lr=self.lr)
 
         t0 = datetime.now()
@@ -115,7 +119,7 @@ class InverseAgent(nn.Module):
         model_save_path = f"./models/state_evaluators/state_evaluator_{time_id}.pth"
         best_model_path = f"./models/state_evaluators/best_state_evaluator_{time_id}.pth"
 
-        for i in range(self.num_steps_for_state_evaluator):
+        for i in range(self.num_epochs_for_state_evaluator):
             indexes = np.random.choice(self.dataset.episode_indices, size=self.batch_size, replace=True)
             episodes = self.dataset.iterate_episodes(indexes)
 
@@ -190,6 +194,105 @@ class InverseAgent(nn.Module):
         else:
             torch.save(self.state_evaluator.state_dict(), path)
 
+    def create_initial_policy(self, initial_policy_path=None, device=device):
+
+        self.initial_policy = InitialPolicy(self.state_dim, self.action_dim).to(device)
+        if initial_policy_path is not None:
+            self.initial_policy.load_state_dict(torch.load(initial_policy_path))
+            self.initial_policy_trained = True
+
+    def train_initial_policy(self):
+        """
+        Create an initial policy by training the robot to do the demonstrations rewound in time
+
+        initial_policy input: observation, output: joint angles
+        """
+
+        env = self.dataset.recover_environment().unwrapped
+        input_dim = env.observation_space.shape[0]
+        output_dim = env.action_space.shape[0]
+        self.initial_policy = InitialPolicy(input_dim, output_dim)
+
+        optimizer = optim.Adam(self.initial_policy.parameters(), lr=self.lr)
+
+        t0 = datetime.now()
+        time_id = datetime.now().strftime('%m.%d-%H:%M')
+        log_path = f"./logs/initial_policy_differences_{time_id}.npy"
+        training_logs = []
+        model_save_path = f"./models/initial_policies/initial_policy_{time_id}.pth"
+        best_model_path = f"./models/initial_policies/best_initial_policy_{time_id}.pth"
+
+        for i in range(self.num_epochs_for_initial_policy):
+            indexes = np.random.choice(self.dataset.episode_indices, size=self.batch_size, replace=True)
+            episodes = self.dataset.iterate_episodes(indexes)
+
+            states_list = []
+            actions_list = []
+            for ep in episodes:
+                idx = np.random.randint(0, len(ep.observations))
+
+                prev_state, prev_action, state = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx]
+
+                # "doing the previous action" is setting the joint angles to the previous position.
+                # we want the robot joint angles to be what it was before this state, the action that caused this state.
+                # this makes it so that the robot will make the trajectory in reverse, rewound in time.
+                reverse_transition = (state, prev_action)
+
+                states_list.append(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device))
+                actions_list.append(torch.tensor(reverse_transition[1], dtype=torch.float32, device=device))
+
+            states_batch = torch.stack(states_list).to(device)
+            actions_batch = torch.stack(actions_list).to(device)
+
+            predicted_actions = self.initial_policy(states_batch)
+            loss = self.mse_loss(predicted_actions, actions_batch)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # --- validation and saving best model ---
+
+            if i % 100 == 0 and self.validation_dataset is not None:
+                with torch.no_grad():
+                    current_error = 0
+                    for j in range(100):
+                        ep = list(self.validation_dataset.sample_episodes(1))[0]
+                        idx = np.random.randint(0, len(ep.observations))
+                        prev_state, prev_action, state = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx]
+                        reverse_transition = (state, prev_action)
+                        predicted_action = self.initial_policy(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device).unsqueeze(0))
+                        current_error += self.mse_loss(predicted_action, torch.tensor(reverse_transition[1], dtype=torch.float32, device=device))
+
+                    if current_error < self.validation_error:
+                        self.validation_error = current_error
+                        self.save_initial_policy(best_model_path)
+                        print(f"new validation best. error: {self.validation_error}")
+                    else:
+                        print(f"validation error: {current_error}")
+
+            # --- logging ---
+
+            training_logs.append({
+                "step": i,
+                "loss": loss.item(),
+            })
+
+            if i % 1000 == 0:
+                print(f"step: {i}, time: {datetime.now() - t0}")
+                print(f"loss: {loss.item()}")
+                print()
+                np.save(log_path, training_logs)
+                self.save_initial_policy(path=model_save_path)
+
+    def save_initial_policy(self, path=None):
+        time = datetime.now().strftime('%m.%d-%H:%M')
+        if path is None:
+            torch.save(self.initial_policy.state_dict(), f"./models/initial_policies/initial_policy_{time}.pth")
+        else:
+            torch.save(self.initial_policy.state_dict(), path)
+
+
     def create_inverse_RL_environment(self):
         """
         Creates the RL environment that will teach the inverse skill by controlling the reward using the trained state evaluator.
@@ -207,20 +310,23 @@ class InverseAgent(nn.Module):
 
     def train_inverse_model(self):
 
-        # --- setup ---
-
         num_envs = multiprocessing.cpu_count()
         env = SubprocVecEnv([self.create_inverse_RL_environment for _ in range(num_envs)])
 
-        inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
+        if not self.initial_policy_trained:
+            raise Exception("Initial policy is not trained yet.")
+        initial_policy_weights = self.initial_policy.state_dict()
 
-        # --- log and save stuff ---
+        inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
+        ppo_actor_network = inverse_model.policy.mlp_extractor.policy_net
+        ppo_actor_network.load_state_dict(initial_policy_weights)
+
 
         time = datetime.now().strftime('%m.%d-%H:%M')
         model_path = f"./models/inverse_model_logs/{time}"
         os.mkdir(model_path)
 
-        total_timesteps = self.num_steps_for_inverse_skill
+        total_timesteps = self.num_epochs_for_inverse_skill
         save_freq = 100_000
         report_freq = 1000
 
@@ -234,8 +340,6 @@ class InverseAgent(nn.Module):
             callback_after_eval=stop_callback
         )
         callback = [checkpoint_callback, eval_callback]
-
-        # --- training ---
 
         inverse_model.learn(total_timesteps=total_timesteps, callback=callback)
         self.inverse_model = inverse_model
@@ -251,10 +355,14 @@ if __name__ == "__main__":
 
     inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    # path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
-    path=None
+    path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
+    # path=None
     inverse_agent.train_state_evaluator(load_state_evaluator_from_path=path, device=device)
-    inverse_agent.save_state_evaluator()
+    # inverse_agent.save_state_evaluator()
+
+
+    inverse_agent.train_initial_policy()
+    inverse_agent.save_initial_policy()
 
     # inverse_agent.train_inverse_model(load_state_evaluator_from_path=path, device=device)
     # inverse_agent.save_inverse_model()
