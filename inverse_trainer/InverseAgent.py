@@ -238,8 +238,8 @@ class InverseAgent(nn.Module):
                 # this makes it so that the robot will make the trajectory in reverse, rewound in time.
                 reverse_transition = (state, prev_action)
 
-                states_np[j] = torch.tensor(reverse_transition[0], dtype=torch.float32, device=device)
-                actions_np[j] = torch.tensor(reverse_transition[1], dtype=torch.float32, device=device)
+                states_np[j] = reverse_transition[0]
+                actions_np[j] = reverse_transition[1]
 
             states_batch = torch.from_numpy(states_np).to(device)
             actions_batch = torch.from_numpy(actions_np).to(device)
