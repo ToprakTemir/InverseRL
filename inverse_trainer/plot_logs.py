@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
@@ -58,7 +60,27 @@ def plot_evaluator_training_info():
     plt.tight_layout()
     plt.show()
 
+def plot_initial_policy_training_info():
+    losses_path = "./logs/initial_policy_differences_02.13-02:24.npy"
+    training_data = np.load(losses_path, allow_pickle=True)
+    training_data = [item for item in training_data if item is not None]
 
+    # Extract columns: assuming the columns are [step, loss].
+    steps = np.array([item["step"] for item in training_data])
+    losses = np.array([item["loss"] for item in training_data])
+
+    losses_smoothed = gaussian_filter1d(losses, sigma=5000)
+
+    # Plot the losses over time
+    plt.figure(figsize=(10, 6))
+    plt.plot(steps, losses_smoothed, label="Loss", linewidth=2)
+    plt.xlabel("Steps")
+    plt.ylabel("Loss")
+    plt.title("Initial Policy Training Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 def plot_evaluator_guesses_compared_to_real_timestamps():
     # Load dataset, environment, and the state evaluator model
@@ -116,9 +138,6 @@ def plot_evaluator_guesses_compared_to_real_timestamps():
     plt.tight_layout()
     plt.show()
 
-# def plot_probabilistic_evaluator_training_info():
-#     path =
-
 def plot_ppo_evaluations():
     # Path to the .npy file containing numbers
     ppo_evaluations_path = "./models/inverse_model_logs/evaluations.npz"
@@ -146,6 +165,7 @@ def plot_ppo_evaluations():
 
 if __name__ == "__main__":
 
-    plot_evaluator_training_info()
-    plot_evaluator_guesses_compared_to_real_timestamps()
+    # plot_evaluator_training_info()
+    plot_initial_policy_training_info()
+    # plot_evaluator_guesses_compared_to_real_timestamps()
     # plot_ppo_evaluations()

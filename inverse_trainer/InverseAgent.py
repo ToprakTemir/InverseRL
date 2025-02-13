@@ -226,9 +226,9 @@ class InverseAgent(nn.Module):
             indexes = np.random.choice(self.dataset.episode_indices, size=self.batch_size, replace=True)
             episodes = self.dataset.iterate_episodes(indexes)
 
-            states_list = []
-            actions_list = []
-            for ep in episodes:
+            states_np = np.zeros((self.batch_size, input_dim), dtype=np.float32)
+            actions_np = np.zeros((self.batch_size, output_dim), dtype=np.float32)
+            for j, ep in enumerate(episodes):
                 idx = np.random.randint(0, len(ep.observations))
 
                 prev_state, prev_action, state = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx]
@@ -238,11 +238,11 @@ class InverseAgent(nn.Module):
                 # this makes it so that the robot will make the trajectory in reverse, rewound in time.
                 reverse_transition = (state, prev_action)
 
-                states_list.append(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device))
-                actions_list.append(torch.tensor(reverse_transition[1], dtype=torch.float32, device=device))
+                states_np[j] = torch.tensor(reverse_transition[0], dtype=torch.float32, device=device)
+                actions_np[j] = torch.tensor(reverse_transition[1], dtype=torch.float32, device=device)
 
-            states_batch = torch.stack(states_list).to(device)
-            actions_batch = torch.stack(actions_list).to(device)
+            states_batch = torch.from_numpy(states_np).to(device)
+            actions_batch = torch.from_numpy(actions_np).to(device)
 
             predicted_actions = self.initial_policy(states_batch)
             if actions_batch.dim() == 1:
@@ -318,7 +318,7 @@ class InverseAgent(nn.Module):
 
         if not self.initial_policy_trained:
             raise Exception("Initial policy is not trained yet.")
-        initial_policy_weights = self.initial_policy.state_dict()
+
 
         inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
         ppo_actor_network = inverse_model.policy.mlp_extractor.policy_net

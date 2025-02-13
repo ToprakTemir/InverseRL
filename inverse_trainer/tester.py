@@ -7,6 +7,9 @@ import minari
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
 
+from InitialPolicy import InitialPolicy
+# from InitialPPO import InitialPolicy
+
 from gymnasium.envs.registration import register
 register(
     id="XarmPushEnv-v0",
@@ -36,8 +39,6 @@ if OPTION == "latest":
 elif OPTION == "best":
     model_path = os.path.abspath(f"{model_dir_path}/best_model.zip")
 
-model = PPO.load(model_path)
-
 non_robot_indices_in_observation = [0, 1, 2]
 
 state_evaluator = StateEvaluator(len(non_robot_indices_in_observation))
@@ -49,15 +50,33 @@ env = dataset.recover_environment().unwrapped
 env = InverseTrainerEnv(state_evaluator, dataset, env, non_robot_indices_in_obs=non_robot_indices_in_observation)
 env.env.render_mode = "human"
 
+
+
+# model = PPO.load(model_path)
+
+initial_model_path = "/Users/toprak/InverseRL/inverse_trainer/models/initial_policies/best_initial_policy_02.13-02:24.pth"
+
+initial_policy = InitialPolicy(env.observation_space.shape[0], env.action_space.shape[0])
+initial_policy.load_state_dict(torch.load(initial_model_path, map_location=torch.device('cpu')))
+initial_policy_weights = initial_policy.state_dict()
+
+# model = PPO(InitialPolicy, env=env, verbose=1, device="cpu")
+# ppo_actor_network = model.policy.mlp_extractor.policy_net
+# ppo_actor_network.load_state_dict(initial_policy_weights)
+
+model = initial_policy
+
 while True:
     observation, _ = env.reset()
     episode_over = False
     i = 0
     while not episode_over:
-        action, _ = model.predict(observation)
-        observation, reward, terminated, truncated, reward_terms = env.step(action)
+        with torch.no_grad():
+            observation = torch.tensor(observation, dtype=torch.float32)
+            action = model.forward(observation)
+            observation, reward, terminated, truncated, reward_terms = env.step(action)
 
-        episode_over = terminated or truncated or i > 300
-        i += 1
+            episode_over = terminated or truncated or i > 300
+            i += 1
 
 

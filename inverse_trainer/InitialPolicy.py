@@ -1,5 +1,6 @@
-import torch
 import torch.nn as nn
+from stable_baselines3.common.policies import ActorCriticPolicy
+
 
 class InitialPolicy(nn.Module):
 
@@ -16,6 +17,7 @@ class InitialPolicy(nn.Module):
             nn.ReLU(),
             nn.Linear(128, output_dim)
         )
+
 
     def forward(self, x):
         return self.sequential(x)
