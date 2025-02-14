@@ -8,7 +8,7 @@ from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
 
 from InitialPolicy import InitialPolicy
-# from InitialPPO import InitialPolicy
+from InitialPPO import CustomPolicy
 
 from gymnasium.envs.registration import register
 register(
@@ -54,17 +54,19 @@ env.env.render_mode = "human"
 
 # model = PPO.load(model_path)
 
-initial_model_path = "/Users/toprak/InverseRL/inverse_trainer/models/initial_policies/best_initial_policy_02.13-02:24.pth"
+initial_model_path = "/Users/toprak/InverseRL/inverse_trainer/models/initial_policies/best_initial_policy_02.13-20:40.pth"
 
-initial_policy = InitialPolicy(env.observation_space.shape[0], env.action_space.shape[0])
-initial_policy.load_state_dict(torch.load(initial_model_path, map_location=torch.device('cpu')))
-initial_policy_weights = initial_policy.state_dict()
+initial_policy = CustomPolicy(env.observation_space, env.action_space)
 
-# model = PPO(InitialPolicy, env=env, verbose=1, device="cpu")
+pretrained_weights = torch.load(initial_model_path, map_location=torch.device('cpu')) # WARNING: change here before next text
+initial_policy.load_pretrained_actor(pretrained_weights)
+
+
+model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
 # ppo_actor_network = model.policy.mlp_extractor.policy_net
 # ppo_actor_network.load_state_dict(initial_policy_weights)
 
-model = initial_policy
+# model = initial_policy
 
 while True:
     observation, _ = env.reset()
@@ -73,7 +75,7 @@ while True:
     while not episode_over:
         with torch.no_grad():
             observation = torch.tensor(observation, dtype=torch.float32)
-            action = model.forward(observation)
+            action, _ = model.predict(observation)
             observation, reward, terminated, truncated, reward_terms = env.step(action)
 
             episode_over = terminated or truncated or i > 300

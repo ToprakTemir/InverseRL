@@ -61,7 +61,7 @@ def plot_evaluator_training_info():
     plt.show()
 
 def plot_initial_policy_training_info():
-    losses_path = "./logs/initial_policy_differences_02.13-02:24.npy"
+    losses_path = "./logs/initial_policy_differences_02.13-20:40.npy"
     training_data = np.load(losses_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
 

@@ -17,7 +17,8 @@ from tensorflow.python.keras.utils.version_utils import training
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
-from InitialPolicy import InitialPolicy
+# from InitialPolicy import InitialPolicy
+from InitialPPO import CustomPolicy
 
 from gymnasium.envs.registration import register
 
@@ -77,6 +78,9 @@ class InverseAgent(nn.Module):
         else:
             return obs[self.non_robot_indices_in_obs]
 
+    def recover_env_from_dataset(self):
+        return self.dataset.recover_environment().unwrapped
+
     def create_state_evaluator(self, state_evaluator_path=None, device=device):
         # Create a state evaluator
         if self.non_robot_indices_in_obs is None:
@@ -126,7 +130,7 @@ class InverseAgent(nn.Module):
             points_list = []  # To hold the predictions
             targets_list = []  # To hold the corresponding targets
             for ep in episodes:
-                if len(ep.observations) == 100_000: # WARNING: this is hardcoded and specific only to my case to skip the failed episodes
+                if len(ep.observations) >= 100_000: # this is to skip the failed episodes until I think of a better way to ignore failed episodes
                     print("failed episode found, skipping this one")
                     continue
 
@@ -196,7 +200,8 @@ class InverseAgent(nn.Module):
 
     def create_initial_policy(self, initial_policy_path=None, device=device):
 
-        self.initial_policy = InitialPolicy(self.state_dim, self.action_dim).to(device)
+        env = self.recover_env_from_dataset()
+        self.initial_policy = CustomPolicy(env.observation_space, env.action_space).to(device)
         if initial_policy_path is not None:
             self.initial_policy.load_state_dict(torch.load(initial_policy_path))
             self.initial_policy_trained = True
@@ -208,10 +213,7 @@ class InverseAgent(nn.Module):
         initial_policy input: observation, output: joint angles
         """
 
-        env = self.dataset.recover_environment().unwrapped
-        input_dim = env.observation_space.shape[0]
-        output_dim = env.action_space.shape[0]
-        self.initial_policy = InitialPolicy(input_dim, output_dim).to(device)
+        self.create_initial_policy()
 
         optimizer = optim.Adam(self.initial_policy.parameters(), lr=self.lr)
 
@@ -226,6 +228,9 @@ class InverseAgent(nn.Module):
             indexes = np.random.choice(self.dataset.episode_indices, size=self.batch_size, replace=True)
             episodes = self.dataset.iterate_episodes(indexes)
 
+            env = self.recover_env_from_dataset()
+            input_dim = env.observation_space.shape[0]
+            output_dim = env.action_space.shape[0]
             states_np = np.zeros((self.batch_size, input_dim), dtype=np.float32)
             actions_np = np.zeros((self.batch_size, output_dim), dtype=np.float32)
             for j, ep in enumerate(episodes):
@@ -242,20 +247,19 @@ class InverseAgent(nn.Module):
                 actions_np[j] = reverse_transition[1]
 
             states_batch = torch.from_numpy(states_np).to(device)
-            actions_batch = torch.from_numpy(actions_np).to(device)
+            target_actions_batch = torch.from_numpy(actions_np).to(device)
 
-            predicted_actions = self.initial_policy(states_batch)
-            if actions_batch.dim() == 1:
-                actions_batch = actions_batch.unsqueeze(-1)
+            # maximise the probability of the target actions being sampled from the policy's output distribution
+            dist, _ = self.initial_policy._get_dist_and_value(states_batch)
 
-            loss = self.mse_loss(predicted_actions, actions_batch)
+            log_prob = dist.log_prob(target_actions_batch)
+            loss = -log_prob.mean()
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             # --- validation and saving best model ---
-
             if i % 100 == 0 and self.validation_dataset is not None:
                 with torch.no_grad():
                     current_error = 0
@@ -264,7 +268,7 @@ class InverseAgent(nn.Module):
                         idx = np.random.randint(0, len(ep.observations))
                         prev_state, prev_action, state = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx]
                         reverse_transition = (state, prev_action)
-                        predicted_action = self.initial_policy(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device).unsqueeze(0))
+                        predicted_action, _ = self.initial_policy(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device).unsqueeze(0))
                         current_error += self.mse_loss(predicted_action, torch.tensor(reverse_transition[1], dtype=torch.float32, device=device))
 
                     if current_error < self.validation_error:
@@ -303,7 +307,7 @@ class InverseAgent(nn.Module):
         if not self.state_evaluator_trained:
             raise Exception("State evaluator is not trained yet.")
 
-        simulation_environment = self.dataset.recover_environment().unwrapped
+        simulation_environment = self.recover_env_from_dataset()
         assert isinstance(simulation_environment, MujocoEnv)
 
         trainer_env = InverseTrainerEnv(self.state_evaluator, self.dataset, simulation_environment, self.non_robot_indices_in_obs)
