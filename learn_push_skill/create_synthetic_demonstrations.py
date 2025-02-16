@@ -17,15 +17,20 @@ class PushDemonstratorEnv(XarmTableEnv):
             "depth_array",
         ],
     }
+
     def __init__(self, render_mode=None):
         super(PushDemonstratorEnv, self).__init__(render_mode=render_mode)
         self.MIN_ANGLE = np.pi / 6
         self.MIN_R = 0.4
         self.MAX_R = 0.8
+        model = mujoco.MjModel.from_xml_path("/Users/toprak/InverseRL/environments/assets/xml_files/xarm7_tabletop.xml")
+        data = mujoco.MjData(model)
 
     def step(self, action):
 
-        super().set_mocap_pos(action[:3])
+        self.data.mocap_pos = action[:3]
+        self.data.mocap_quat = action[3:7]
+        self.data.tendon_length[0] = action[7]
 
         obs = self._get_obs()
 
@@ -85,122 +90,20 @@ class PushDemonstratorEnv(XarmTableEnv):
 
 # Global variables for the demonstration policy
 inPushingPosition = False
-initial_joint_angles = None
 robot_base = np.array([0, -1, 0])
 
-# Load the model and data from the MuJoCo XML.
-model = mujoco.MjModel.from_xml_path("/Users/toprak/InverseRL/environments/assets/xml_files/xarm7_tabletop.xml")
-data = mujoco.MjData(model)
-
-# def forward_kinematics(model, data, joint_angles):
-#     # Update the relevant portion of qpos with the candidate joint angles
-#     qpos = data.qpos.copy()
-#     qpos[robot_joint_indices] = joint_angles[:7]
-#     data.qpos[:] = qpos
-#     # Update simulation state based on the new qpos
-#     mujoco.mj_forward(model, data)
-#     # Now compute the average position of the fingers
-#     left_finger_pos = data.body("left_finger").xpos.copy()
-#     right_finger_pos = data.body("right_finger").xpos.copy()
-#     return (left_finger_pos + right_finger_pos) / 2
-#
-#
-# def ik_objective(joint_angles, model, data, target_position):
-#     """
-#     IK objective: the Euclidean distance between the current end-effector
-#     position (given joint_angles) and the target_position.
-#     """
-#     ee_pos = forward_kinematics(model, data, joint_angles)
-#     loss = np.linalg.norm(ee_pos - target_position)
-#
-#     # mujoco.mj_forward(model, data)
-#     # contact_penalty = 0
-#     # for i in range(data.ncon):  # Loop through contacts
-#     #     contact = data.contact[i]
-#     #     force = np.zeros(6)
-#     #     mujoco.mj_contactForce(model, data, i, force)
-#     #     contact_penalty += np.linalg.norm(force)  # Penalize collisions
-#
-#     return loss
-#
-# def calculate_inverse_kinematics(model, data, target_position, initial_guess):
-#     """
-#     Solves for robot joint angles that drive the end-effector toward target_position
-#     while avoiding collisions.
-#     """
-#
-#     # Define joint limits as constraints
-#     joint_lower_bounds = model.jnt_range[:, 0][robot_joint_indices]
-#     joint_upper_bounds = model.jnt_range[:, 1][robot_joint_indices]
-#
-#     bounds = Bounds(joint_lower_bounds, joint_upper_bounds)
-#
-#     result = minimize(
-#         ik_objective,
-#         initial_guess,
-#         args=(model, data, target_position),
-#         method="trust-constr",  # Better for constrained optimization
-#         bounds=bounds,
-#         options={"disp": True}
-#     )
-#
-#     return result.x
-
-# def calculate_initial_joint_angles(initial_observation):
-#     """
-#     Calculates initial joint angles for the demonstration by computing IK for a target
-#     end-effector position based on the object's initial position.
-#     """
-#     obj_xyz = initial_observation[:3]
-#     # Raise the end-effector slightly above the object
-#     ee_xyz = obj_xyz
-#     ee_xyz[2] += 0.05 # 5 cm above the object
-#
-#     # Use the current robot joint angles as the initial guess.
-#     initial_guess = data.qpos[robot_joint_indices].copy()
-#
-#     # Solve for joint angles using the custom IK solver.
-#     joint_angles = calculate_inverse_kinematics(model, data, ee_xyz, initial_guess[:7])
-#     gripper_closeness = 0
-#     action = np.concatenate([joint_angles, [gripper_closeness]])
-#     return action
-
 def demonstration_policy(observation, env):
-    """
-    Provides a demonstration policy action based on the current observation.
-    When not in a pushing position, the policy first computes initial joint angles.
-    Afterwards, it computes a new action to gently push the object.
-    """
-    global inPushingPosition
 
-    object_pos = observation[:3]
-
-    if not inPushingPosition:
-        print("initial position not taken yet!")
-
-        env.set_mocap_pos(object_pos)
-
-        # current_joint_angles = data.qpos[robot_joint_indices]
-        # if np.linalg.norm(current_joint_angles - initial_joint_angles[:7]) < 0.001:
-        #     inPushingPosition = True
-
-        return initial_joint_angles
-
-    print("taken initial position successfully!")
-
-    # If already in pushing position, compute a new target position by moving
-    # slightly in the direction from the robot base toward the object.
     obj_xyz = observation[:3]
     movement_direction = obj_xyz - robot_base
     movement_direction /= np.linalg.norm(movement_direction)
-    movement_direction *= 0.05
+    movement_direction *= 0.001
 
-    target_position = obj_xyz + movement_direction
-    # Use the previously solved joint angles as the initial guess.
-    joint_angles = calculate_inverse_kinematics(model, data, target_position, initial_joint_angles[:7])
+    target_pos = obj_xyz + movement_direction
+
+    target_quat = [0, 0.707, 0.707, 0]
     gripper_closeness = 0
-
-    action = np.concatenate([joint_angles, [gripper_closeness]])
+    action = np.concatenate([target_pos, target_quat, [gripper_closeness]])
     return action
 
 if __name__ == "__main__":
