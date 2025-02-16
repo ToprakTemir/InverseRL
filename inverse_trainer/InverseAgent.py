@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from gymnasium.envs.mujoco import MujocoEnv
+from gymnasium.wrappers import TimeLimit
 from stable_baselines3 import PPO
 import minari
 from minari import MinariDataset
@@ -64,7 +65,8 @@ class InverseAgent(nn.Module):
 
         self.num_epochs_for_state_evaluator = 1_000_000
         self.num_epochs_for_initial_policy = 1_000_000
-        self.num_epochs_for_inverse_skill = 1_000_000
+
+        self.total_steps_for_inverse_skill = 1_000_000_000
         self.batch_size = 128
 
 
@@ -99,7 +101,7 @@ class InverseAgent(nn.Module):
             self.state_evaluator_trained = True
 
 
-    def train_state_evaluator(self, load_state_evaluator_from_path=None, device=None):
+    def train_state_evaluator(self, load_from_path=None, device=None):
         """
         trains the state evaluator to predict the timestamp of a given point in the trajectory
         """
@@ -108,7 +110,7 @@ class InverseAgent(nn.Module):
         # but state evaluator is only trained by the demonstrations, what if the RL agent gets to a state that is not in the demonstrations at all,
         # and state evaluator gives a random point, possibly close to 0? Then RL agent will get a reward for that, which is not what we want.
 
-        self.create_state_evaluator(state_evaluator_path=load_state_evaluator_from_path, device=device)
+        self.create_state_evaluator(state_evaluator_path=load_from_path, device=device)
 
         if self.state_evaluator_trained:
             print("state evaluator is already trained")
@@ -206,14 +208,18 @@ class InverseAgent(nn.Module):
             self.initial_policy.load_state_dict(torch.load(initial_policy_path))
             self.initial_policy_trained = True
 
-    def train_initial_policy(self):
+    def train_initial_policy(self, load_from_path=None, device=device):
         """
         Create an initial policy by training the robot to do the demonstrations rewound in time
 
         initial_policy input: observation, output: joint angles
         """
 
-        self.create_initial_policy()
+        self.create_initial_policy(initial_policy_path=load_from_path, device=device)
+
+        if self.initial_policy_trained:
+            print("initial policy is already trained")
+            return
 
         optimizer = optim.Adam(self.initial_policy.parameters(), lr=self.lr)
 
@@ -249,17 +255,25 @@ class InverseAgent(nn.Module):
             states_batch = torch.from_numpy(states_np).to(device)
             target_actions_batch = torch.from_numpy(actions_np).to(device)
 
-            # maximise the probability of the target actions being sampled from the policy's output distribution
-            dist, _ = self.initial_policy._get_dist_and_value(states_batch)
+            # -- LOG PROB LOSS --
+            # dist, _ = self.initial_policy._get_dist_and_value(states_batch)
+            #
+            # log_prob = dist.log_prob(target_actions_batch)
+            # loss = -log_prob.mean()
 
-            log_prob = dist.log_prob(target_actions_batch)
-            loss = -log_prob.mean()
+            # -- MSE LOSS --
+            predicted_actions, _ = self.initial_policy(states_batch)
+            if target_actions_batch.dim() == 1:
+                target_actions_batch = target_actions_batch.unsqueeze(-1)
+
+            loss = self.mse_loss(predicted_actions, target_actions_batch) * 10 # sizeable differences in high dimensions still give small squared distance when the distance is less than 1 meter, so I multiply by 10
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             # --- validation and saving best model ---
+
             if i % 100 == 0 and self.validation_dataset is not None:
                 with torch.no_grad():
                     current_error = 0
@@ -292,6 +306,8 @@ class InverseAgent(nn.Module):
                 np.save(log_path, training_logs)
                 self.save_initial_policy(path=model_save_path)
 
+        self.initial_policy_trained = True
+
     def save_initial_policy(self, path=None):
         time = datetime.now().strftime('%m.%d-%H:%M')
         if path is None:
@@ -300,40 +316,41 @@ class InverseAgent(nn.Module):
             torch.save(self.initial_policy.state_dict(), path)
 
 
-    def create_inverse_RL_environment(self):
+    def create_inverse_trainer_environment(self, max_episode_steps=2000):
         """
         Creates the RL environment that will teach the inverse skill by controlling the reward using the trained state evaluator.
         """
-        if not self.state_evaluator_trained:
-            raise Exception("State evaluator is not trained yet.")
 
         simulation_environment = self.recover_env_from_dataset()
-        assert isinstance(simulation_environment, MujocoEnv)
+
+        assert isinstance(simulation_environment, MujocoEnv), "InverseTrainerEnv should be a MujocoEnv"
 
         trainer_env = InverseTrainerEnv(self.state_evaluator, self.dataset, simulation_environment, self.non_robot_indices_in_obs)
+        trainer_env = TimeLimit(trainer_env, max_episode_steps=max_episode_steps)
         self.inverse_trainer_environment = trainer_env
 
         return trainer_env
 
     def train_inverse_model(self):
 
-        num_envs = multiprocessing.cpu_count()
-        env = SubprocVecEnv([self.create_inverse_RL_environment for _ in range(num_envs)])
+        if not self.state_evaluator_trained:
+            raise Exception("State evaluator is not trained yet.")
 
         if not self.initial_policy_trained:
             raise Exception("Initial policy is not trained yet.")
 
 
-        inverse_model = PPO("MlpPolicy", env=env, verbose=1, device="cpu")
-        ppo_actor_network = inverse_model.policy.mlp_extractor.policy_net
-        ppo_actor_network.load_state_dict(initial_policy_weights)
+        num_envs = multiprocessing.cpu_count()
+        env = SubprocVecEnv([self.create_inverse_trainer_environment for _ in range(num_envs)])
 
+        inverse_model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
+        inverse_model.policy.load_state_dict(self.initial_policy.state_dict())
 
         time = datetime.now().strftime('%m.%d-%H:%M')
         model_path = f"./models/inverse_model_logs/{time}"
         os.mkdir(model_path)
 
-        total_timesteps = self.num_epochs_for_inverse_skill
+        total_timesteps = self.total_steps_for_inverse_skill
         save_freq = 100_000
         report_freq = 1000
 
@@ -364,12 +381,10 @@ if __name__ == "__main__":
 
     path = "./models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
     # path=None
-    inverse_agent.train_state_evaluator(load_state_evaluator_from_path=path, device=device)
-    # inverse_agent.save_state_evaluator()
+    inverse_agent.train_state_evaluator(load_from_path=path, device=device)
+
+    path = "./models/initial_policies/best_initial_policy_02.14-18:43.pth"
+    inverse_agent.train_initial_policy(load_from_path=path, device=device)
 
 
-    inverse_agent.train_initial_policy()
-    inverse_agent.save_initial_policy()
-
-    # inverse_agent.train_inverse_model(load_state_evaluator_from_path=path, device=device)
-    # inverse_agent.save_inverse_model()
+    inverse_agent.train_inverse_model()

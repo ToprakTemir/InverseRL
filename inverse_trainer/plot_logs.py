@@ -4,9 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
 import torch
+from torch.backends.cudnn import deterministic
+
 from StateEvaluator import StateEvaluator
 import minari
 import random
+
+from InitialPPO import CustomPolicy
 
 
 def plot_evaluator_training_info():
@@ -82,6 +86,68 @@ def plot_initial_policy_training_info():
     plt.tight_layout()
     plt.show()
 
+def plot_initial_policy_guesses_compared_to_reverse_trajectory():
+    initial_policy_path = "./models/initial_policies/best_initial_policy_02.14-16:22_logProbLoss.pth"
+    dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
+
+    initial_policy = CustomPolicy(dataset.observation_space, dataset.action_space)
+
+    pretrained_weights = torch.load(initial_policy_path, map_location=torch.device('cpu'))
+    initial_policy.load_pretrained_weights(pretrained_weights)
+
+    # ===== CONFIGURATION =====
+    plot_style = "line"  # Options: "scatter" or "line"
+    colors = plt.cm.get_cmap('tab10', 7)  # Get a colormap for distinct colors
+    deterministic = True
+    # =========================
+
+    sampled_episode = dataset.sample_episodes(1)[0]
+
+    # plot all joint angles (action dimensions) of sampled episodes in reverse order
+
+    plt.figure(figsize=(12, 8))
+
+    total_steps = len(sampled_episode.observations)
+    actual_joint_angles = np.zeros((total_steps, 7))
+    predicted_joint_angles = np.zeros((total_steps, 7))
+
+    for step_idx, obs in enumerate(sampled_episode.observations):
+        obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+        predicted, _ = initial_policy(obs_tensor, deterministic=deterministic)
+        predicted = predicted.squeeze(0)
+        predicted = predicted[:7]
+        predicted_joint_angles[step_idx] = predicted.detach().numpy()
+        actual_joint_angles[step_idx] = obs[3:10]
+
+    # actual_joint_angles = actual_joint_angles[::-1]
+
+
+    for joint_idx in range(7):
+        if plot_style == "scatter":
+            plt.scatter(range(total_steps), predicted_joint_angles[:, joint_idx], label=f"Predicted Joint {joint_idx}",
+                        s=5, color=colors(joint_idx))
+        elif plot_style == "line":
+            plt.plot(range(total_steps), predicted_joint_angles[:, joint_idx], label=f"Predicted Joint {joint_idx}",
+                     linewidth=2, color=colors(joint_idx))
+        else:
+            raise ValueError(f"Unknown plot_style: {plot_style}")
+
+    styles = ['-', '--', '-.', ':', (0, (3, 1, 1, 1)), (0, (5, 5)), (0, (1, 10))]
+    for joint_idx in range(7):
+        plt.plot(range(total_steps), actual_joint_angles[:, joint_idx], label=f"Actual Joint {joint_idx}", linewidth=2,
+                 color="black", linestyle=styles[joint_idx])
+
+
+    plt.xlabel("Steps")
+    plt.ylabel("Joint Angles")
+    plt.title("Predicted vs Actual Joint Angles")
+    plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize=8)  # Move legend outside the plot
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+
 def plot_evaluator_guesses_compared_to_real_timestamps():
     # Load dataset, environment, and the state evaluator model
     state_evaluator_path = "./models/state_evaluators/state_evaluator_02.12-01:28.pth"
@@ -139,8 +205,9 @@ def plot_evaluator_guesses_compared_to_real_timestamps():
     plt.show()
 
 def plot_ppo_evaluations():
-    # Path to the .npy file containing numbers
-    ppo_evaluations_path = "./models/inverse_model_logs/evaluations.npz"
+
+    time = "02.16-03:57"
+    ppo_evaluations_path = f"./models/inverse_model_logs/{time}/evaluations.npz"
 
     # Load the values from the file
     data = np.load(ppo_evaluations_path)
@@ -166,6 +233,8 @@ def plot_ppo_evaluations():
 if __name__ == "__main__":
 
     # plot_evaluator_training_info()
-    plot_initial_policy_training_info()
+    # plot_initial_policy_training_info()
+    # plot_initial_policy_guesses_compared_to_reverse_trajectory()
     # plot_evaluator_guesses_compared_to_real_timestamps()
-    # plot_ppo_evaluations()
+
+    plot_ppo_evaluations()

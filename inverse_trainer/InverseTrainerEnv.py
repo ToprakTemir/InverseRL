@@ -19,6 +19,7 @@ class InverseTrainerEnv(gym.Wrapper):
             dataset: minari.MinariDataset,
             env: MujocoEnv,
             non_robot_indices_in_obs: list = None,
+            max_episode_steps = 2000,
             state_reward_weight = 1,
             reward_control_weight = 0.1,
             **kwargs,
@@ -32,14 +33,23 @@ class InverseTrainerEnv(gym.Wrapper):
         self.reward_control_weight = reward_control_weight
         self.reward_state_weight = state_reward_weight
 
+        self.episode_step = 0
+        self.max_episode_steps = max_episode_steps
+
 
     def step(self, action):
         """
         Overrides the step method of the environment, only changes the reward calculation.
         """
 
+        self.episode_step += 1
+
         obs, _, terminated, truncated, info = self.env.step(action)
         reward, reward_info = self._get_rew(obs, action)
+
+        if self.episode_step >= self.max_episode_steps:
+            truncated = True
+            terminated = True
 
         return obs, reward, terminated, truncated, info | reward_info
 
@@ -65,11 +75,13 @@ class InverseTrainerEnv(gym.Wrapper):
         }
         return reward, reward_info
 
-    def reset_model(self):
+    def reset(self, **kwargs):
         """
         sets the environment to a random initial state similar to a moment in the dataset.
         """
         assert isinstance(self.env, MujocoEnv)
+
+        self.episode_step = 0
 
         sampled_episode = list(self.dataset.sample_episodes(1))[0]
         sample_time = np.random.randint(0, len(sampled_episode))
@@ -87,4 +99,4 @@ class InverseTrainerEnv(gym.Wrapper):
 
         obs[self.non_robot_indices_in_obs] = object_obs_at_sample_time
 
-        return obs
+        return obs, {}
