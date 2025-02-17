@@ -63,11 +63,13 @@ class InverseAgent(nn.Module):
         self.lr = 0.001
         self.mse_loss = nn.MSELoss().to(device)
 
-        self.num_epochs_for_state_evaluator = 1_000_000
-        self.num_epochs_for_initial_policy = 1_000_000
+        total_steps_in_dataset = sum([len(ep.observations) for ep in self.dataset.iterate_episodes()])
+        self.batch_size = 128
+
+        self.num_epochs_for_state_evaluator = 64 * (total_steps_in_dataset // self.batch_size)
+        self.num_epochs_for_initial_policy = 256 * (total_steps_in_dataset // self.batch_size)
 
         self.total_steps_for_inverse_skill = 1_000_000_000
-        self.batch_size = 128
 
 
     def remove_robot_indices(self, obs) -> np.ndarray:
@@ -201,14 +203,13 @@ class InverseAgent(nn.Module):
             torch.save(self.state_evaluator.state_dict(), path)
 
     def create_initial_policy(self, initial_policy_path=None, device=device):
-
         env = self.recover_env_from_dataset()
         self.initial_policy = CustomPolicy(env.observation_space, env.action_space).to(device)
         if initial_policy_path is not None:
             self.initial_policy.load_state_dict(torch.load(initial_policy_path))
             self.initial_policy_trained = True
 
-    def train_initial_policy(self, load_from_path=None, device=device):
+    def pretrain_policy(self, load_from_path=None, device=device):
         """
         Create an initial policy by training the robot to do the demonstrations rewound in time
 
@@ -262,11 +263,11 @@ class InverseAgent(nn.Module):
             # loss = -log_prob.mean()
 
             # -- MSE LOSS --
-            predicted_actions, _ = self.initial_policy(states_batch)
+            predicted_actions, _, _ = self.initial_policy(states_batch)
             if target_actions_batch.dim() == 1:
                 target_actions_batch = target_actions_batch.unsqueeze(-1)
 
-            loss = self.mse_loss(predicted_actions, target_actions_batch) * 10 # sizeable differences in high dimensions still give small squared distance when the distance is less than 1 meter, so I multiply by 10
+            loss = self.mse_loss(predicted_actions, target_actions_batch) # sizeable differences in high dimensions still give small squared distance when the distance is less than 1 meter, so I multiply by 10
 
             optimizer.zero_grad()
             loss.backward()
@@ -282,12 +283,12 @@ class InverseAgent(nn.Module):
                         idx = np.random.randint(0, len(ep.observations))
                         prev_state, prev_action, state = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx]
                         reverse_transition = (state, prev_action)
-                        predicted_action, _ = self.initial_policy(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device).unsqueeze(0))
+                        predicted_action, _, _ = self.initial_policy(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device).unsqueeze(0))
                         current_error += self.mse_loss(predicted_action, torch.tensor(reverse_transition[1], dtype=torch.float32, device=device))
 
                     if current_error < self.validation_error:
                         self.validation_error = current_error
-                        self.save_initial_policy(best_model_path)
+                        self.save_pretrained_policy(best_model_path)
                         print(f"new validation best. error: {self.validation_error}")
                     else:
                         print(f"validation error: {current_error}")
@@ -304,11 +305,11 @@ class InverseAgent(nn.Module):
                 print(f"loss: {loss.item()}")
                 print()
                 np.save(log_path, training_logs)
-                self.save_initial_policy(path=model_save_path)
+                self.save_pretrained_policy(path=model_save_path)
 
         self.initial_policy_trained = True
 
-    def save_initial_policy(self, path=None):
+    def save_pretrained_policy(self, path=None):
         time = datetime.now().strftime('%m.%d-%H:%M')
         if path is None:
             torch.save(self.initial_policy.state_dict(), f"./models/initial_policies/initial_policy_{time}.pth")
@@ -379,12 +380,12 @@ if __name__ == "__main__":
 
     inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    # path = "./models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
-    path = None
+    path = "./models/state_evaluators/best_state_evaluator_02.17-06:50.pth"
+    # path = None
     inverse_agent.train_state_evaluator(load_from_path=path, device=device)
 
     # path = "./models/initial_policies/best_initial_policy_02.14-18:43.pth"
     path = None
-    inverse_agent.train_initial_policy(load_from_path=path, device=device)
+    inverse_agent.pretrain_policy(load_from_path=path, device=device)
 
     inverse_agent.train_inverse_model()

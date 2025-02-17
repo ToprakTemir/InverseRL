@@ -1,3 +1,4 @@
+import gymnasium as gym
 import minari
 import numpy as np
 import mujoco
@@ -7,6 +8,13 @@ from minari import DataCollector
 from minari.data_collector import EpisodeBuffer
 
 from environments.XarmTableEnvironment import XarmTableEnv
+
+from gymnasium.envs import register
+register(
+    id="XarmTableEnv-v0",
+    entry_point="environments.XarmTableEnvironment:XarmTableEnv",
+    max_episode_steps=2000,
+)
 
 
 class PushDemonstratorEnv(Wrapper):
@@ -221,9 +229,9 @@ def collect_push_demo(dataset_id, num_demos):
 if __name__ == "__main__":
 
     num_demos = 1000
-    dataset_id = f"xarm_synthetic_push_1k-v0"
+    dataset_id = f"xarm_synthetic_push_50-v0"
 
-    collect_push_demo(dataset_id, num_demos)
+    # collect_push_demo(dataset_id, num_demos)
 
     # FILTERING THE DEMO
 
@@ -245,7 +253,7 @@ if __name__ == "__main__":
     print(f"original episode count: {dataset.total_episodes}")
     print(f"filtered episode count: {len(episode_buffers)}")
 
-    dataset_env = XarmTableEnv()
+    dataset_env = gym.make("XarmTableEnv-v0")
     dataset_env = PushDemonstratorEnv(dataset_env)
     minari.delete_dataset(dataset_id)
     minari.create_dataset_from_buffers(
@@ -253,5 +261,7 @@ if __name__ == "__main__":
         episode_buffers,
         algorithm_name="push_trajectory_generator",
         author="Bora Toprak Temir",
-        env=dataset_env
+        env=dataset_env.env
     )
+    dataset = minari.load_dataset(dataset_id)
+    print(f"env_spec after recreation: {dataset.env_spec}")

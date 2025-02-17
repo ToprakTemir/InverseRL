@@ -34,9 +34,9 @@ env.env.render_mode = "human"
 # ----- MODEL SETUP -----
 
 
-TEST_PRATRAINED = False
+TEST_PRATRAINED = True
 if TEST_PRATRAINED:
-    initial_model_path = "models/initial_policies/best_initial_policy_02.14-18:43.pth"
+    initial_model_path = "models/initial_policies/best_initial_policy_02.17-17:15.pth"
 
     initial_policy = CustomPolicy(env.observation_space, env.action_space)
 

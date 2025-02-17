@@ -24,7 +24,7 @@ def plot_evaluator_training_info():
         sigma (float): The standard deviation for the Gaussian kernel used to smooth the differences.
     """
     # Path to the .npy file containing numbers.
-    evaluator_differences_path = "./logs/state_evaluator_differences_02.12-01:28.npy"
+    evaluator_differences_path = "./logs/state_evaluator_differences_02.17-06:50.npy"
     training_data = np.load(evaluator_differences_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
 
@@ -65,7 +65,7 @@ def plot_evaluator_training_info():
     plt.show()
 
 def plot_initial_policy_training_info():
-    losses_path = "./logs/initial_policy_differences_02.13-20:40.npy"
+    losses_path = "./logs/initial_policy_differences_02.17-17:15.npy"
     training_data = np.load(losses_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
 
@@ -73,7 +73,7 @@ def plot_initial_policy_training_info():
     steps = np.array([item["step"] for item in training_data])
     losses = np.array([item["loss"] for item in training_data])
 
-    losses_smoothed = gaussian_filter1d(losses, sigma=5000)
+    losses_smoothed = gaussian_filter1d(losses, sigma=500)
 
     # Plot the losses over time
     plt.figure(figsize=(10, 6))
@@ -87,8 +87,8 @@ def plot_initial_policy_training_info():
     plt.show()
 
 def plot_initial_policy_guesses_compared_to_reverse_trajectory():
-    initial_policy_path = "./models/initial_policies/best_initial_policy_02.14-16:22_logProbLoss.pth"
-    dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
+    initial_policy_path = "./models/initial_policies/best_initial_policy_02.17-17:15.pth"
+    dataset = minari.load_dataset("xarm_synthetic_push_1k-v0")
 
     initial_policy = CustomPolicy(dataset.observation_space, dataset.action_space)
 
@@ -113,7 +113,7 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory():
 
     for step_idx, obs in enumerate(sampled_episode.observations):
         obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
-        predicted, _ = initial_policy(obs_tensor, deterministic=deterministic)
+        predicted, _, _ = initial_policy(obs_tensor, deterministic=deterministic)
         predicted = predicted.squeeze(0)
         predicted = predicted[:7]
         predicted_joint_angles[step_idx] = predicted.detach().numpy()
@@ -150,8 +150,8 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory():
 
 def plot_evaluator_guesses_compared_to_real_timestamps():
     # Load dataset, environment, and the state evaluator model
-    state_evaluator_path = "./models/state_evaluators/state_evaluator_02.12-01:28.pth"
-    dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
+    state_evaluator_path = "./models/state_evaluators/state_evaluator_02.17-06:50.pth"
+    dataset = minari.load_dataset("xarm_synthetic_push_1k-v0")
 
     state_evaluator = StateEvaluator(3)
     state_evaluator.load_state_dict(torch.load(state_evaluator_path))
@@ -232,9 +232,13 @@ def plot_ppo_evaluations():
 
 if __name__ == "__main__":
 
+    # STATE EVALUATOR TESTS
     # plot_evaluator_training_info()
-    # plot_initial_policy_training_info()
-    # plot_initial_policy_guesses_compared_to_reverse_trajectory()
     # plot_evaluator_guesses_compared_to_real_timestamps()
 
-    plot_ppo_evaluations()
+    # INITIAL POLICY TESTS
+    plot_initial_policy_training_info()
+    plot_initial_policy_guesses_compared_to_reverse_trajectory()
+
+    # FINAL MODEL TEST
+    # plot_ppo_evaluations()
