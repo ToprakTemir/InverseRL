@@ -65,7 +65,7 @@
 
         <!-- Cube -->
         <body name="object" pos="0 0 10">
-            <geom name="cube_geom" type="box" size="0.025 0.025 0.025" rgba="1 0 0 1"/>
+            <geom name="cube_geom" type="box" size="0.1 0.1 0.1" rgba="1 0 0 1"/>
             <joint name="cube_free" type="free" damping="0.01" />
             <inertial pos="0 0 0" mass="7" diaginertia="0.001 0.001 0.001"/>
         </body>
@@ -75,9 +75,7 @@
             <include file="xarm7_model.xml"/>
         </body>
 
-        <body mocap="true" name="mocap" pos="0 0 0">
-
-        </body>
+        <body mocap="true" name="mocap" pos="0 -0.95 0.1"/>
     </worldbody>
 
     <contact>

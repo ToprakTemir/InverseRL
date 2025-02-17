@@ -48,7 +48,7 @@ if TEST_PRATRAINED:
 
 else:
 
-    time = "02.16-03:26"
+    time = "02.16-04:05"
     model_dir_path = f"/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_logs/{time}"
 
     # OPTION = "latest"

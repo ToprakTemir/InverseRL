@@ -374,17 +374,17 @@ class InverseAgent(nn.Module):
 
 
 if __name__ == "__main__":
-    dataset = minari.load_dataset("xarm_push_only_successful_50-v0")
-    validation_dataset = minari.load_dataset("xarm_push_only_successful_5k-v0")
+    dataset = minari.load_dataset("xarm_synthetic_push_50-v0")
+    validation_dataset = minari.load_dataset("xarm_synthetic_push_1k-v0")
 
     inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    path = "./models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
-    # path=None
+    # path = "./models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
+    path = None
     inverse_agent.train_state_evaluator(load_from_path=path, device=device)
 
-    path = "./models/initial_policies/best_initial_policy_02.14-18:43.pth"
+    # path = "./models/initial_policies/best_initial_policy_02.14-18:43.pth"
+    path = None
     inverse_agent.train_initial_policy(load_from_path=path, device=device)
-
 
     inverse_agent.train_inverse_model()
