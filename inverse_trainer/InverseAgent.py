@@ -246,8 +246,8 @@ class InverseAgent(nn.Module):
                 prev_state, prev_action, state = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx]
 
                 # "doing the previous action" is setting the joint angles to the previous position.
-                # we want the robot joint angles to be what it was before this state, the action that caused this state.
-                # this makes it so that the robot will make the trajectory in reverse, rewound in time.
+                # we want the robot joint angles to be what it was before this state, i.e. the action that caused this state.
+                # this makes it so that the robot will make the trajectory in reverse.
                 reverse_transition = (state, prev_action)
 
                 states_np[j] = reverse_transition[0]
@@ -257,17 +257,16 @@ class InverseAgent(nn.Module):
             target_actions_batch = torch.from_numpy(actions_np).to(device)
 
             # -- LOG PROB LOSS --
-            # dist, _ = self.initial_policy._get_dist_and_value(states_batch)
-            #
-            # log_prob = dist.log_prob(target_actions_batch)
-            # loss = -log_prob.mean()
+            dist, _ = self.initial_policy._get_dist_and_value(states_batch)
+
+            log_prob = dist.log_prob(target_actions_batch)
+            loss = -log_prob.mean()
 
             # -- MSE LOSS --
-            predicted_actions, _, _ = self.initial_policy(states_batch)
-            if target_actions_batch.dim() == 1:
-                target_actions_batch = target_actions_batch.unsqueeze(-1)
-
-            loss = self.mse_loss(predicted_actions, target_actions_batch) # sizeable differences in high dimensions still give small squared distance when the distance is less than 1 meter, so I multiply by 10
+            # predicted_actions, _, _ = self.initial_policy(states_batch)
+            # if target_actions_batch.dim() == 1:
+            #     target_actions_batch = target_actions_batch.unsqueeze(-1)
+            # loss = self.mse_loss(predicted_actions, target_actions_batch)
 
             optimizer.zero_grad()
             loss.backward()

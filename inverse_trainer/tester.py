@@ -81,7 +81,6 @@ while True:
     i = 0
     while not episode_over:
         with torch.no_grad():
-            observation = torch.tensor(observation, dtype=torch.float32)
             action, _ = model.predict(observation, deterministic=False)
             observation, reward, terminated, truncated, reward_terms = env.step(action)
 

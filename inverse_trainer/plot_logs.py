@@ -65,7 +65,7 @@ def plot_evaluator_training_info():
     plt.show()
 
 def plot_initial_policy_training_info():
-    losses_path = "./logs/initial_policy_differences_02.17-17:15.npy"
+    losses_path = "./logs/initial_policy_differences_02.17-18:01.npy"
     training_data = np.load(losses_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
 
@@ -86,8 +86,8 @@ def plot_initial_policy_training_info():
     plt.tight_layout()
     plt.show()
 
-def plot_initial_policy_guesses_compared_to_reverse_trajectory():
-    initial_policy_path = "./models/initial_policies/best_initial_policy_02.17-17:15.pth"
+def plot_initial_policy_guesses_compared_to_reverse_trajectory(start_from_end=False):
+    initial_policy_path = "./models/initial_policies/best_initial_policy_02.17-18:01.pth"
     dataset = minari.load_dataset("xarm_synthetic_push_1k-v0")
 
     initial_policy = CustomPolicy(dataset.observation_space, dataset.action_space)
@@ -102,18 +102,17 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory():
     # =========================
 
     sampled_episode = dataset.sample_episodes(1)[0]
-
-    # plot all joint angles (action dimensions) of sampled episodes in reverse order
-
-    plt.figure(figsize=(12, 8))
+    observations = sampled_episode.observations
+    observations_rewound = observations[::-1]
 
     total_steps = len(sampled_episode.observations)
     actual_joint_angles = np.zeros((total_steps, 7))
     predicted_joint_angles = np.zeros((total_steps, 7))
 
-    for step_idx, obs in enumerate(sampled_episode.observations):
+    for step_idx, obs in enumerate(observations_rewound):
         obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
         predicted, _, _ = initial_policy(obs_tensor, deterministic=deterministic)
+        print(f"prediction: {predicted}")
         predicted = predicted.squeeze(0)
         predicted = predicted[:7]
         predicted_joint_angles[step_idx] = predicted.detach().numpy()
@@ -237,8 +236,8 @@ if __name__ == "__main__":
     # plot_evaluator_guesses_compared_to_real_timestamps()
 
     # INITIAL POLICY TESTS
-    plot_initial_policy_training_info()
-    plot_initial_policy_guesses_compared_to_reverse_trajectory()
+    # plot_initial_policy_training_info()
+    plot_initial_policy_guesses_compared_to_reverse_trajectory(start_from_end=True)
 
     # FINAL MODEL TEST
     # plot_ppo_evaluations()
