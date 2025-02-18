@@ -94,7 +94,7 @@ class InverseTrainerEnv(gym.Wrapper):
         obs = obs[0] # obs is given as a tuple of the observation as a list and the extra information dictionary. We only need the observation list
 
         qpos = self.env.init_qpos.copy()
-        qpos[self.non_robot_indices_in_obs] = object_obs_at_sample_time # WARNING: this indexes aren't necessarily coincide for every environment. But it is correct for my xarm test scene
+        qpos[self.non_robot_indices_in_obs] = object_obs_at_sample_time # WARNING: this indexes doesn't necessarily coincide for every environment. But it is correct for my xarm test scene
         self.env.set_state(qpos, self.env.init_qvel.copy())
 
         obs[self.non_robot_indices_in_obs] = object_obs_at_sample_time

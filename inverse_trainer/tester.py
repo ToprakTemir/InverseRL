@@ -23,32 +23,32 @@ register(
 non_robot_indices_in_observation = [0, 1, 2]
 
 state_evaluator = StateEvaluator(len(non_robot_indices_in_observation))
-state_evaluator_path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/best_state_evaluator_02.10-00:41.pth"
+state_evaluator_path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/state_evaluator_02.18-19:46.pth"
 state_evaluator.load_state_dict(torch.load(state_evaluator_path, map_location=torch.device('cpu')))
 
-dataset = minari.load_dataset("xarm_push_only_successful_1k-v0")
+dataset = minari.load_dataset("xarm_push_directly_forward_50-v0")
 env = dataset.recover_environment().unwrapped
+print(env)
 env = InverseTrainerEnv(state_evaluator, dataset, env, non_robot_indices_in_obs=non_robot_indices_in_observation)
 env.env.render_mode = "human"
 
-# ----- MODEL SETUP -----
 
+# ----- MODEL SETUP -----
 
 TEST_PRATRAINED = True
 if TEST_PRATRAINED:
-    initial_model_path = "models/initial_policies/best_initial_policy_02.17-17:15.pth"
+    initial_model_path = "models/initial_policies/best_initial_policy_02.18-20:19.pth"
 
     initial_policy = CustomPolicy(env.observation_space, env.action_space)
 
     pretrained_weights = torch.load(initial_model_path, map_location=torch.device('cpu'))
     initial_policy.load_pretrained_weights(pretrained_weights)
 
-    model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
-    model.policy.load_state_dict(initial_policy.state_dict())
+    # model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
+    # model.policy.load_state_dict(initial_policy.state_dict())
 
 else:
-
-    time = "02.16-04:05"
+    time = "02.17-22:39"
     model_dir_path = f"/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_logs/{time}"
 
     # OPTION = "latest"
@@ -81,7 +81,10 @@ while True:
     i = 0
     while not episode_over:
         with torch.no_grad():
-            action, _ = model.predict(observation, deterministic=False)
+            observation = torch.tensor(observation, dtype=torch.float32).unsqueeze(0)
+            action, _, _ = initial_policy(observation, deterministic=True)
+            action = action[0]
+            print(action)
             observation, reward, terminated, truncated, reward_terms = env.step(action)
 
             episode_over = terminated or truncated or i > 300

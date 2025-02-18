@@ -21,6 +21,8 @@ from InverseTrainerEnv import InverseTrainerEnv
 # from InitialPolicy import InitialPolicy
 from InitialPPO import CustomPolicy
 
+from plot_logs import plot_initial_policy_guesses_compared_to_reverse_trajectory
+
 from gymnasium.envs.registration import register
 
 register(
@@ -47,7 +49,8 @@ class InverseAgent(nn.Module):
         self.action_dim = dataset.action_space.shape[0]
 
         self.validation_dataset = validation_dataset
-        self.validation_error = np.inf
+        self.validation_error_state_evaluator = np.inf
+        self.validation_error_initial_policy = np.inf
 
         self.non_robot_indices_in_obs = non_robot_indices_in_obs
 
@@ -66,8 +69,8 @@ class InverseAgent(nn.Module):
         total_steps_in_dataset = sum([len(ep.observations) for ep in self.dataset.iterate_episodes()])
         self.batch_size = 128
 
-        self.num_epochs_for_state_evaluator = 64 * (total_steps_in_dataset // self.batch_size)
-        self.num_epochs_for_initial_policy = 256 * (total_steps_in_dataset // self.batch_size)
+        self.num_epochs_for_state_evaluator = 4 * total_steps_in_dataset
+        self.num_epochs_for_initial_policy = 4 * total_steps_in_dataset
 
         self.total_steps_for_inverse_skill = 1_000_000_000
 
@@ -169,10 +172,10 @@ class InverseAgent(nn.Module):
                         predicted_timestamp = self.state_evaluator(obs).squeeze(-1)
                         current_error += self.mse_loss(predicted_timestamp, torch.tensor(ep.observations[obs_idx] / len(ep.observations), dtype=torch.float32, device=device))
 
-                    if current_error < self.validation_error:
-                        self.validation_error = current_error
+                    if current_error < self.validation_error_state_evaluator:
+                        self.validation_error_state_evaluator = current_error
                         self.save_state_evaluator(best_model_path)
-                        print(f"new validation best. error: {self.validation_error}")
+                        print(f"new validation best. error: {self.validation_error_state_evaluator}")
                     else:
                         print(f"validation error: {current_error}")
 
@@ -231,42 +234,42 @@ class InverseAgent(nn.Module):
         model_save_path = f"./models/initial_policies/initial_policy_{time_id}.pth"
         best_model_path = f"./models/initial_policies/best_initial_policy_{time_id}.pth"
 
+        env = self.recover_env_from_dataset()
+        input_dim = env.observation_space.shape[0]
+        output_dim = env.action_space.shape[0]
+        print(input_dim)
+        print(output_dim)
         for i in range(self.num_epochs_for_initial_policy):
             indexes = np.random.choice(self.dataset.episode_indices, size=self.batch_size, replace=True)
             episodes = self.dataset.iterate_episodes(indexes)
 
-            env = self.recover_env_from_dataset()
-            input_dim = env.observation_space.shape[0]
-            output_dim = env.action_space.shape[0]
             states_np = np.zeros((self.batch_size, input_dim), dtype=np.float32)
             actions_np = np.zeros((self.batch_size, output_dim), dtype=np.float32)
             for j, ep in enumerate(episodes):
-                idx = np.random.randint(0, len(ep.observations))
+                idx = np.random.randint(1, len(ep.observations) - 1)
 
-                prev_state, prev_action, state = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx]
+                prev_state, prev_action, state, action = ep.observations[idx - 1], ep.actions[idx - 1], ep.observations[idx], ep.actions[idx]
 
                 # "doing the previous action" is setting the joint angles to the previous position.
                 # we want the robot joint angles to be what it was before this state, i.e. the action that caused this state.
                 # this makes it so that the robot will make the trajectory in reverse.
-                reverse_transition = (state, prev_action)
-
-                states_np[j] = reverse_transition[0]
-                actions_np[j] = reverse_transition[1]
+                states_np[j] = state
+                actions_np[j] = prev_action
 
             states_batch = torch.from_numpy(states_np).to(device)
             target_actions_batch = torch.from_numpy(actions_np).to(device)
 
             # -- LOG PROB LOSS --
-            dist, _ = self.initial_policy._get_dist_and_value(states_batch)
-
-            log_prob = dist.log_prob(target_actions_batch)
-            loss = -log_prob.mean()
+            # dist, _ = self.initial_policy._get_dist_and_value(states_batch)
+            #
+            # log_prob = dist.log_prob(target_actions_batch)
+            # loss = -log_prob.mean()
 
             # -- MSE LOSS --
-            # predicted_actions, _, _ = self.initial_policy(states_batch)
-            # if target_actions_batch.dim() == 1:
-            #     target_actions_batch = target_actions_batch.unsqueeze(-1)
-            # loss = self.mse_loss(predicted_actions, target_actions_batch)
+            predicted_actions, values, log_probs = self.initial_policy(states_batch)
+            if target_actions_batch.dim() == 1:
+                target_actions_batch = target_actions_batch.unsqueeze(-1)
+            loss = self.mse_loss(predicted_actions, target_actions_batch)
 
             optimizer.zero_grad()
             loss.backward()
@@ -285,10 +288,14 @@ class InverseAgent(nn.Module):
                         predicted_action, _, _ = self.initial_policy(torch.tensor(reverse_transition[0], dtype=torch.float32, device=device).unsqueeze(0))
                         current_error += self.mse_loss(predicted_action, torch.tensor(reverse_transition[1], dtype=torch.float32, device=device))
 
-                    if current_error < self.validation_error:
-                        self.validation_error = current_error
+                    if current_error < self.validation_error_initial_policy:
+                        self.validation_error_initial_policy = current_error
                         self.save_pretrained_policy(best_model_path)
-                        print(f"new validation best. error: {self.validation_error}")
+                        print(f"new validation best. error: {self.validation_error_initial_policy}")
+
+                        # LOGGING NEW SAVED MODEL
+                        plot_initial_policy_guesses_compared_to_reverse_trajectory(path=best_model_path)
+
                     else:
                         print(f"validation error: {current_error}")
 
@@ -374,12 +381,12 @@ class InverseAgent(nn.Module):
 
 
 if __name__ == "__main__":
-    dataset = minari.load_dataset("xarm_synthetic_push_50-v0")
-    validation_dataset = minari.load_dataset("xarm_synthetic_push_1k-v0")
+    dataset = minari.load_dataset("xarm_push_directly_forward_50-v0")
+    validation_dataset = minari.load_dataset("xarm_push_directly_forward_1k-v0")
 
     inverse_agent = InverseAgent(dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    path = "./models/state_evaluators/best_state_evaluator_02.17-06:50.pth"
+    path = "./models/state_evaluators/state_evaluator_02.18-19:46.pth"
     # path = None
     inverse_agent.train_state_evaluator(load_from_path=path, device=device)
 

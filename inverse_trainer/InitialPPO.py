@@ -12,7 +12,7 @@ class CustomMLPExtractor(nn.Module):
     Simple MLP feature extractor that outputs separate latent codes
     for the policy (actor) and the value function (critic).
     """
-    def __init__(self, features_dim: int, net_arch=(128, 128), activation_fn=nn.ReLU):
+    def __init__(self, features_dim: int, net_arch=(256, 256), activation_fn=nn.ReLU):
         super().__init__()
         # Actor MLP
         actor_layers = []

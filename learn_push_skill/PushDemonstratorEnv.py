@@ -35,8 +35,8 @@ class PushDemonstratorEnv(Wrapper):
         super().__init__(env)
 
         # HYPERPARAMETERS
-        self.MIN_ANGLE = np.pi / 6
-        self.MIN_R = 0.4
+        self.MIN_ANGLE = 8 * (np.pi / 18)
+        self.MIN_R = 0.5
         self.MAX_R = 0.8
 
     def reset(self, **kwargs):
@@ -229,9 +229,9 @@ def collect_push_demo(dataset_id, num_demos):
 if __name__ == "__main__":
 
     num_demos = 1000
-    dataset_id = f"xarm_synthetic_push_50-v0"
+    dataset_id = f"xarm_push_directly_forward_1k-v0"
 
-    # collect_push_demo(dataset_id, num_demos)
+    collect_push_demo(dataset_id, num_demos)
 
     # FILTERING THE DEMO
 

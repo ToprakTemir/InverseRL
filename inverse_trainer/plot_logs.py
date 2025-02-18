@@ -24,7 +24,7 @@ def plot_evaluator_training_info():
         sigma (float): The standard deviation for the Gaussian kernel used to smooth the differences.
     """
     # Path to the .npy file containing numbers.
-    evaluator_differences_path = "./logs/state_evaluator_differences_02.17-06:50.npy"
+    evaluator_differences_path = "./logs/state_evaluator_differences_02.18-19:46.npy"
     training_data = np.load(evaluator_differences_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
 
@@ -64,93 +64,11 @@ def plot_evaluator_training_info():
     plt.tight_layout()
     plt.show()
 
-def plot_initial_policy_training_info():
-    losses_path = "./logs/initial_policy_differences_02.17-18:01.npy"
-    training_data = np.load(losses_path, allow_pickle=True)
-    training_data = [item for item in training_data if item is not None]
-
-    # Extract columns: assuming the columns are [step, loss].
-    steps = np.array([item["step"] for item in training_data])
-    losses = np.array([item["loss"] for item in training_data])
-
-    losses_smoothed = gaussian_filter1d(losses, sigma=500)
-
-    # Plot the losses over time
-    plt.figure(figsize=(10, 6))
-    plt.plot(steps, losses_smoothed, label="Loss", linewidth=2)
-    plt.xlabel("Steps")
-    plt.ylabel("Loss")
-    plt.title("Initial Policy Training Loss")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-def plot_initial_policy_guesses_compared_to_reverse_trajectory(start_from_end=False):
-    initial_policy_path = "./models/initial_policies/best_initial_policy_02.17-18:01.pth"
-    dataset = minari.load_dataset("xarm_synthetic_push_1k-v0")
-
-    initial_policy = CustomPolicy(dataset.observation_space, dataset.action_space)
-
-    pretrained_weights = torch.load(initial_policy_path, map_location=torch.device('cpu'))
-    initial_policy.load_pretrained_weights(pretrained_weights)
-
-    # ===== CONFIGURATION =====
-    plot_style = "line"  # Options: "scatter" or "line"
-    colors = plt.cm.get_cmap('tab10', 7)  # Get a colormap for distinct colors
-    deterministic = True
-    # =========================
-
-    sampled_episode = dataset.sample_episodes(1)[0]
-    observations = sampled_episode.observations
-    observations_rewound = observations[::-1]
-
-    total_steps = len(sampled_episode.observations)
-    actual_joint_angles = np.zeros((total_steps, 7))
-    predicted_joint_angles = np.zeros((total_steps, 7))
-
-    for step_idx, obs in enumerate(observations_rewound):
-        obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
-        predicted, _, _ = initial_policy(obs_tensor, deterministic=deterministic)
-        print(f"prediction: {predicted}")
-        predicted = predicted.squeeze(0)
-        predicted = predicted[:7]
-        predicted_joint_angles[step_idx] = predicted.detach().numpy()
-        actual_joint_angles[step_idx] = obs[3:10]
-
-    # actual_joint_angles = actual_joint_angles[::-1]
-
-
-    for joint_idx in range(7):
-        if plot_style == "scatter":
-            plt.scatter(range(total_steps), predicted_joint_angles[:, joint_idx], label=f"Predicted Joint {joint_idx}",
-                        s=5, color=colors(joint_idx))
-        elif plot_style == "line":
-            plt.plot(range(total_steps), predicted_joint_angles[:, joint_idx], label=f"Predicted Joint {joint_idx}",
-                     linewidth=2, color=colors(joint_idx))
-        else:
-            raise ValueError(f"Unknown plot_style: {plot_style}")
-
-    styles = ['-', '--', '-.', ':', (0, (3, 1, 1, 1)), (0, (5, 5)), (0, (1, 10))]
-    for joint_idx in range(7):
-        plt.plot(range(total_steps), actual_joint_angles[:, joint_idx], label=f"Actual Joint {joint_idx}", linewidth=2,
-                 color="black", linestyle=styles[joint_idx])
-
-
-    plt.xlabel("Steps")
-    plt.ylabel("Joint Angles")
-    plt.title("Predicted vs Actual Joint Angles")
-    plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize=8)  # Move legend outside the plot
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
 
 def plot_evaluator_guesses_compared_to_real_timestamps():
     # Load dataset, environment, and the state evaluator model
-    state_evaluator_path = "./models/state_evaluators/state_evaluator_02.17-06:50.pth"
-    dataset = minari.load_dataset("xarm_synthetic_push_1k-v0")
+    state_evaluator_path = "models/state_evaluators/state_evaluator_02.18-19:46.pth"
+    dataset = minari.load_dataset("xarm_push_directly_forward_1k-v0")
 
     state_evaluator = StateEvaluator(3)
     state_evaluator.load_state_dict(torch.load(state_evaluator_path))
@@ -203,6 +121,92 @@ def plot_evaluator_guesses_compared_to_real_timestamps():
     plt.tight_layout()
     plt.show()
 
+
+def plot_initial_policy_training_info():
+    losses_path = "./logs/initial_policy_differences_02.17-21:51.npy"
+    training_data = np.load(losses_path, allow_pickle=True)
+    training_data = [item for item in training_data if item is not None]
+
+    # Extract columns: assuming the columns are [step, loss].
+    steps = np.array([item["step"] for item in training_data])
+    losses = np.array([item["loss"] for item in training_data])
+
+    losses_smoothed = gaussian_filter1d(losses, sigma=500)
+
+    # Plot the losses over time
+    plt.figure(figsize=(10, 6))
+    plt.plot(steps, losses_smoothed, label="Loss", linewidth=2)
+    plt.xlabel("Steps")
+    plt.ylabel("Loss")
+    plt.title("Initial Policy Training Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, start_from_end=False):
+    if path is None:
+        initial_policy_path = "./models/initial_policies/best_initial_policy_02.17-21:51.pth"
+    else:
+        initial_policy_path = path
+
+    dataset = minari.load_dataset("xarm_push_directly_forward_1k-v0")
+
+    initial_policy = CustomPolicy(dataset.observation_space, dataset.action_space)
+    pretrained_weights = torch.load(initial_policy_path, map_location=torch.device('cpu'))
+    initial_policy.load_pretrained_weights(pretrained_weights)
+
+    # ===== CONFIGURATION =====
+    plot_style = "line"  # Options: "scatter" or "line"
+    colors = plt.cm.get_cmap('tab10', 7)  # Get a colormap for distinct colors
+    deterministic = True
+    # =========================
+
+    sampled_episode = dataset.sample_episodes(1)[0]
+    observations = sampled_episode.observations
+    observations_rewound = observations[::-1]
+
+    total_steps = len(sampled_episode.observations)
+    actual_joint_angles = np.zeros((total_steps, 7))
+    predicted_joint_angles = np.zeros((total_steps, 7))
+
+    for step_idx, obs in enumerate(observations):
+        obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+        predicted, _, _ = initial_policy(obs_tensor, deterministic=deterministic)
+        predicted = predicted.squeeze(0)
+        predicted = predicted[:7]
+        predicted_joint_angles[step_idx] = predicted.detach().numpy()
+        actual_joint_angles[step_idx] = obs[3:10]
+
+    # actual_joint_angles = actual_joint_angles[::-1]
+
+
+    for joint_idx in range(7):
+        if plot_style == "scatter":
+            plt.scatter(range(total_steps), predicted_joint_angles[:, joint_idx], label=f"Predicted Joint {joint_idx}",
+                        s=5, color=colors(joint_idx))
+        elif plot_style == "line":
+            plt.plot(range(total_steps), predicted_joint_angles[:, joint_idx], label=f"Predicted Joint {joint_idx}",
+                     linewidth=2, color=colors(joint_idx))
+        else:
+            raise ValueError(f"Unknown plot_style: {plot_style}")
+
+    styles = ['-', '--', '-.', ':', (0, (3, 1, 1, 1)), (0, (5, 5)), (0, (1, 10))]
+    for joint_idx in range(7):
+        plt.plot(range(total_steps), actual_joint_angles[:, joint_idx], label=f"Actual Joint {joint_idx}", linewidth=2,
+                 color="black", linestyle=styles[joint_idx])
+
+
+    plt.xlabel("Steps")
+    plt.ylabel("Joint Angles")
+    plt.title("Predicted vs Actual Joint Angles")
+    plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize=8)  # Move legend outside the plot
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+
 def plot_ppo_evaluations():
 
     time = "02.16-03:57"
@@ -228,16 +232,57 @@ def plot_ppo_evaluations():
     plt.grid(True)
     plt.show()
 
+def show_difference_between_datasets(dataset1, dataset2, num_plots=5):
+
+    # sample a random episode from the 2 datasets and plot them, create num_plots different plots
+
+    dataset1 = minari.load_dataset(dataset1)
+    dataset2 = minari.load_dataset(dataset2)
+
+    for i in range(num_plots):
+        episode1 = list(dataset1.sample_episodes(1))[0]
+        episode2 = list(dataset2.sample_episodes(1))[0]
+
+        observations1 = episode1.observations
+        observations2 = episode2.observations
+
+        total_steps = max(len(observations1), len(observations2))
+
+        actual_joint_angles1 = np.zeros((total_steps, 7))
+        actual_joint_angles2 = np.zeros((total_steps, 7))
+
+        for step_idx, obs in enumerate(observations1):
+            actual_joint_angles1[step_idx] = obs[3:10]
+
+        for step_idx, obs in enumerate(observations2):
+            actual_joint_angles2[step_idx] = obs[3:10]
+
+        for joint_idx in range(7):
+            plt.plot(range(total_steps), actual_joint_angles1[:, joint_idx], label=f"Dataset 1 Joint {joint_idx}", linewidth=2)
+            plt.plot(range(total_steps), actual_joint_angles2[:, joint_idx], label=f"Dataset 2 Joint {joint_idx}", linewidth=2)
+
+        plt.xlabel("Steps")
+        plt.ylabel("Joint Angles")
+        plt.title("Dataset 1 vs Dataset 2 Joint Angles")
+        plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize=8)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+
 
 if __name__ == "__main__":
 
     # STATE EVALUATOR TESTS
-    # plot_evaluator_training_info()
-    # plot_evaluator_guesses_compared_to_real_timestamps()
+    plot_evaluator_training_info()
+    plot_evaluator_guesses_compared_to_real_timestamps()
 
     # INITIAL POLICY TESTS
     # plot_initial_policy_training_info()
-    plot_initial_policy_guesses_compared_to_reverse_trajectory(start_from_end=True)
+    # plot_initial_policy_guesses_compared_to_reverse_trajectory(start_from_end=True)
+
+    # show_difference_between_datasets(dataset1="xarm_synthetic_push_50-v0", dataset2="xarm_synthetic_push_1k-v0")
+
 
     # FINAL MODEL TEST
     # plot_ppo_evaluations()

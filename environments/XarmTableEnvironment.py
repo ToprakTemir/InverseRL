@@ -77,7 +77,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
             self.render()
 
         obs = self._get_obs()
-        reward = self._compute_reward(action)
+        reward = 0
 
         collusion = False
         if self._check_collision_with_table():
@@ -116,8 +116,6 @@ class XarmTableEnv(MujocoEnv, EzPickle):
 
         return total_force_on_table
 
-    def _compute_reward(self, action):
-        return 0
 
     def _check_collision_with_table(self):
         return False

@@ -62,7 +62,7 @@ def collect_demo_by_PPO(dataset_id, num_demos):
     )
 
 
-def generate_push_trajectory(env, speed=0.002, pre_push_offset=0.1, push_distance=1, table_z=-0.03):
+def generate_push_trajectory(env, speed=0.002, pre_push_offset=0.1, table_z=-0.03):
     """
     Generates a trajectory (list of action points) for pushing an object away,
     moving at a fixed speed (distance per step).
@@ -153,10 +153,9 @@ def generate_push_trajectory(env, speed=0.002, pre_push_offset=0.1, push_distanc
 
     return traj_actions
 
-def collect_demo_by_generating_push_trajectory(dataset_id, num_demos):
-    env = XarmTableEnv()
+def collect_demo_by_generating_push_trajectory(num_demos):
+    env = XarmTableEnv(render_mode="human")
     env = PushDemonstratorEnv(env)
-    env = DataCollector(env, record_infos=False)
 
     successful_demo_count = 0
     while successful_demo_count < num_demos:
@@ -164,11 +163,16 @@ def collect_demo_by_generating_push_trajectory(dataset_id, num_demos):
         observation, _ = env.reset()
         print(f"initial distance to robot: {np.linalg.norm(observation[0:2] - [0, -1])}")
 
+        vector_from_robot_to_obj = observation[0:2] - [0, -1]
+        angle = np.arctan2(vector_from_robot_to_obj[1], vector_from_robot_to_obj[0])
+        print(f"initial angle to robot: {angle}")
+
         traj = generate_push_trajectory(env.env)
         step_count = 0
         successful = False
         for action in traj:
             observation, _, _, _, _ = env.step(action)
+            env.render()
             step_count += 1
 
 
@@ -184,14 +188,8 @@ def collect_demo_by_generating_push_trajectory(dataset_id, num_demos):
 
         print()
 
-    env.create_dataset(
-        dataset_id=dataset_id,
-        algorithm_name="push_trajectory_generator",
-        author="Bora Toprak Temir"
-    )
 
 
 if __name__ == "__main__":
-    dataset_id = "xarm_push_only_successful_50-v0"
     num_demos = 50
-    collect_demo_by_generating_push_trajectory(dataset_id, num_demos)
+    collect_demo_by_generating_push_trajectory(num_demos)
