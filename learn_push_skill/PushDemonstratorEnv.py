@@ -23,25 +23,19 @@ class PushDemonstratorEnv(Wrapper):
     provides a push policy function that uses mocap control for the robot to push the object.
     """
 
-    metadata = {
-        "render_modes": [
-            "human",
-            "rgb_array",
-            "depth_array",
-        ],
-    }
-
-    def __init__(self, env: XarmTableEnv):
+    def __init__(self, env: XarmTableEnv, render_mode=None):
         super().__init__(env)
 
+        self.default_ee_angle = [0, 0, 0, 1]
+        self.default_ee_closeness = [0]
+
         # HYPERPARAMETERS
-        self.MIN_ANGLE = 8 * (np.pi / 18)
-        self.MIN_R = 0.5
-        self.MAX_R = 0.8
+        # self.MIN_ANGLE = np.pi / 6  # general, wide angle
+        self.MIN_ANGLE = 89 * (np.pi / 180)  # directly forward
+        self.MIN_R = 0.42
+        self.MAX_R = 0.45
 
     def reset(self, **kwargs):
-        obs = super().reset(**kwargs)
-
         qpos = self.env.init_qpos.copy()
         qvel = self.env.init_qvel.copy()
 
@@ -60,8 +54,8 @@ class PushDemonstratorEnv(Wrapper):
 
         self.env.set_state(qpos, qvel)
 
-        ee_id = self.env.model.body("end_effector").id
-        self.env.data.mocap_pos = self.env.data.xpos[ee_id].copy()
+        ee_pos = self.get_ee_pos()
+        self.env.data.mocap_pos = ee_pos
         self.env.data.mocap_pos[:, 2] += 0.01
         self.env.data.mocap_quat = [0, 0, 0, 1]
         mujoco.mj_step(self.env.model, self.env.data)
@@ -70,15 +64,24 @@ class PushDemonstratorEnv(Wrapper):
 
         return self.env._get_obs(), None
 
+    def get_ee_pos(self):
+        ee_id = self.env.model.body("end_effector").id
+        return self.env.data.xpos[ee_id].copy()
+
     def step(self, action):
 
         self.env.data.mocap_pos = action[:3]
-        self.env.data.mocap_quat = action[3:7]
-        self.env.data.ten_length = action[7]
+        # self.env.data.mocap_quat = action[3:7]
+        # self.env.data.ten_length = action[7]
+        self.env.data.mocap_quat = self.default_ee_angle
+        self.env.data.ten_length = self.default_ee_closeness
 
         mujoco.mj_step(self.env.model, self.env.data)
         mujoco.mj_kinematics(self.env.model, self.env.data)
         mujoco.mj_forward(self.env.model, self.env.data)
+
+        if self.env.render_mode == "human":
+            self.env.render()
 
         obs = self.env._get_obs()
         reward = 0
@@ -93,7 +96,7 @@ class PushDemonstratorEnv(Wrapper):
 
 
 
-def generate_push_trajectory(env, speed=0.002, pre_push_offset=0.1, push_distance=1, table_z=-0.03):
+def generate_push_trajectory(env, speed=0.002, pre_push_offset=0.1, push_distance=1, table_z=-0.034):
     """
     Generates a trajectory (list of action points) for pushing an object away,
     moving at a fixed speed (distance per step).
@@ -173,22 +176,25 @@ def generate_push_trajectory(env, speed=0.002, pre_push_offset=0.1, push_distanc
     traj_positions = traj_positions_approach + traj_positions_push
 
     # Use a fixed quaternion (identity) so that orientation is not controlled.
-    fixed_quat = np.array([0, 0, 0, 1])
-    gripper_closeness = 0  # Modify if necessary
+    # fixed_quat = np.array([0, 0, 0, 1])
+    # gripper_closeness = 0  # Modify if necessary
 
     # Assemble the full 8D action for each trajectory point.
-    traj_actions = [
-        np.concatenate([pos, fixed_quat, [gripper_closeness]])
-        for pos in traj_positions
-    ]
-    traj_actions = np.array(traj_actions).astype(np.float32)
-
+    # traj_actions = [
+    #     np.concatenate([pos, fixed_quat, [gripper_closeness]])
+    #     for pos in traj_positions
+    # ]
+    # traj_actions = np.array(traj_actions).astype(np.float32)
+    traj_actions = np.array(traj_positions).astype(np.float32)
     return traj_actions
 
 
-def collect_push_demo(dataset_id, num_demos):
+def collect_push_demo(dataset_id, num_demos, render_mode=None):
 
-    base_env = XarmTableEnv()
+    if render_mode == "human":
+        base_env = XarmTableEnv(render_mode="human")
+    else:
+        base_env = XarmTableEnv()
     push_env = PushDemonstratorEnv(base_env)
     data_collector_env = DataCollector(push_env, record_infos=False)
 
@@ -202,11 +208,12 @@ def collect_push_demo(dataset_id, num_demos):
         step_count = 0
         successful = False
         for action in traj:
+            action = np.clip(action, base_env.action_space.low, base_env.action_space.high)
             observation, _, _, _, _ = data_collector_env.step(action)
             step_count += 1
 
         print(f"final distance to robot: {np.linalg.norm(observation[0:2] - [0, -1])}")
-        if np.linalg.norm(observation[0:2] - [0, -1]) > 0.9:
+        if np.linalg.norm(observation[0:2] - [0, -1]) > 0.89:
             successful = True
 
         if successful:
@@ -228,10 +235,12 @@ def collect_push_demo(dataset_id, num_demos):
 
 if __name__ == "__main__":
 
-    num_demos = 1000
-    dataset_id = f"xarm_push_directly_forward_1k-v0"
+    num_demos = 1
+    dataset_id = f"xarm_push_3d_directly_forward_lower_dimensions_1-v0"
+
 
     collect_push_demo(dataset_id, num_demos)
+    # collect_push_demo(dataset_id, num_demos, render_mode="human")
 
     # FILTERING THE DEMO
 
@@ -240,7 +249,7 @@ if __name__ == "__main__":
     episode_buffers = []
     for episode in dataset.iterate_episodes():
         final_obs = episode.observations[-1]
-        if np.linalg.norm(final_obs[0:2] - [0, -1]) > 0.9:
+        if np.linalg.norm(final_obs[0:2] - [0, -1]) > 0.89:
             episode_buffer = EpisodeBuffer(
                 observations=episode.observations,
                 actions=episode.actions,

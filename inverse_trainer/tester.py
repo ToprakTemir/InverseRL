@@ -1,54 +1,47 @@
+import numpy as np
+import mujoco
 from stable_baselines3 import PPO
 import gymnasium as gym
 import torch
 import os
 import minari
+import time
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
+from environments.XarmTableEnvironment import XarmTableEnv
 
-from InitialPPO import CustomPolicy
-
-from gymnasium.envs.registration import register
+from CustomPolicy import CustomPolicy
 
 
 # --- ENVIRONMENT SETUP ---
 
-register(
-    id="XarmPushEnv-v0",
-    entry_point="environments.XarmTableEnvironment:XarmTableEnv",
-    max_episode_steps=300,
-)
-
 non_robot_indices_in_observation = [0, 1, 2]
-
 state_evaluator = StateEvaluator(len(non_robot_indices_in_observation))
 state_evaluator_path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/state_evaluator_02.18-19:46.pth"
 state_evaluator.load_state_dict(torch.load(state_evaluator_path, map_location=torch.device('cpu')))
 
-dataset = minari.load_dataset("xarm_push_directly_forward_50-v0")
-env = dataset.recover_environment().unwrapped
-print(env)
-env = InverseTrainerEnv(state_evaluator, dataset, env, non_robot_indices_in_obs=non_robot_indices_in_observation)
-env.env.render_mode = "human"
+dataset = minari.load_dataset("xarm_push_3d_action_space_closer_1k-v0")
+env = XarmTableEnv(control_option="ee_pos", render_mode="human")
 
+env = InverseTrainerEnv(env, state_evaluator, dataset, non_robot_indices_in_obs=non_robot_indices_in_observation)
+
+initial_model_path = "models/initial_policies/best_initial_policy_log_prob_02.27-03:16.pth"
+
+initial_policy = CustomPolicy(env.observation_space, env.action_space)
+pretrained_weights = torch.load(initial_model_path, map_location=torch.device('cpu'))
+initial_policy.load_pretrained_weights(pretrained_weights)
 
 # ----- MODEL SETUP -----
 
 TEST_PRATRAINED = True
+# TEST_PRATRAINED = False
 if TEST_PRATRAINED:
-    initial_model_path = "models/initial_policies/best_initial_policy_02.18-20:19.pth"
-
-    initial_policy = CustomPolicy(env.observation_space, env.action_space)
-
-    pretrained_weights = torch.load(initial_model_path, map_location=torch.device('cpu'))
-    initial_policy.load_pretrained_weights(pretrained_weights)
-
-    # model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
-    # model.policy.load_state_dict(initial_policy.state_dict())
+    model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
+    model.policy.load_state_dict(initial_policy.state_dict())
 
 else:
-    time = "02.17-22:39"
+    time = "02.21-01:54"
     model_dir_path = f"/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_logs/{time}"
 
     # OPTION = "latest"
@@ -75,17 +68,25 @@ else:
 
 # ----- TESTING -----
 
+model = env.env.model
+data = env.env.data
+
 while True:
-    observation, _ = env.reset()
-    episode_over = False
-    i = 0
-    while not episode_over:
-        with torch.no_grad():
+    with torch.no_grad():
+        episode_over = False
+        i = 0
+        initial_obs, _ = env.reset()
+        initial_obs = torch.tensor(initial_obs, dtype=torch.float32).unsqueeze(0)
+        action, _, _ = initial_policy(initial_obs, deterministic=False)
+        # action = list(dataset.iterate_episodes())[0].actions[-1]
+        observation, _, _, _, _ = env.step(action)
+        env.env.wait_until_ee_reaches_mocap()
+
+        while not episode_over:
             observation = torch.tensor(observation, dtype=torch.float32).unsqueeze(0)
-            action, _, _ = initial_policy(observation, deterministic=True)
+            action, _, _ = initial_policy(observation, deterministic=False)
             action = action[0]
-            print(action)
             observation, reward, terminated, truncated, reward_terms = env.step(action)
 
-            episode_over = terminated or truncated or i > 300
+            episode_over = terminated or truncated or i > 1000 or np.linalg.norm(observation[:3] - [0, -1, 0]) > 1
             i += 1

@@ -1,12 +1,11 @@
 import numpy as np
 import torch
 
+import mujoco
 import gymnasium as gym
 from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
 import minari
-from numpy.f2py.auxfuncs import isint1
-from tensorflow.python.ops.numpy_ops.np_dtypes import object_
 
 from StateEvaluator import StateEvaluator
 
@@ -15,16 +14,17 @@ class InverseTrainerEnv(gym.Wrapper):
 
     def __init__(
             self,
+            env: MujocoEnv,
             state_evaluator : StateEvaluator,
             dataset: minari.MinariDataset,
-            env: MujocoEnv,
             non_robot_indices_in_obs: list = None,
-            max_episode_steps = 2000,
+            max_episode_steps = 1000,
             state_reward_weight = 1,
             reward_control_weight = 0.1,
             **kwargs,
     ):
         super().__init__(env)
+
 
         self.state_evaluator = state_evaluator
         self.dataset = dataset
@@ -43,7 +43,9 @@ class InverseTrainerEnv(gym.Wrapper):
         """
 
         self.episode_step += 1
-
+        low = torch.tensor(self.action_space.low, dtype=torch.float32)
+        high = torch.tensor(self.action_space.high, dtype=torch.float32)
+        action = action.clip(low, high)
         obs, _, terminated, truncated, info = self.env.step(action)
         reward, reward_info = self._get_rew(obs, action)
 
@@ -99,4 +101,5 @@ class InverseTrainerEnv(gym.Wrapper):
 
         obs[self.non_robot_indices_in_obs] = object_obs_at_sample_time
 
+        obs = self.env._get_obs()
         return obs, {}

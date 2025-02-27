@@ -1,7 +1,5 @@
 import torch as th
 import torch.nn as nn
-import torch.nn.functional as F
-
 from gymnasium import spaces
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.distributions import make_proba_distribution
@@ -12,7 +10,7 @@ class CustomMLPExtractor(nn.Module):
     Simple MLP feature extractor that outputs separate latent codes
     for the policy (actor) and the value function (critic).
     """
-    def __init__(self, features_dim: int, net_arch=(256, 256), activation_fn=nn.ReLU):
+    def __init__(self, features_dim: int, net_arch=(128, 128), activation_fn=nn.ReLU):
         super().__init__()
         # Actor MLP
         actor_layers = []
@@ -45,7 +43,6 @@ class CustomMLPExtractor(nn.Module):
     def forward(self, features: th.Tensor):
         return self.forward_actor(features), self.forward_critic(features)
 
-
 class CustomPolicy(ActorCriticPolicy):
     """
     A custom policy that manually creates actor/critic nets.
@@ -77,29 +74,22 @@ class CustomPolicy(ActorCriticPolicy):
             activation_fn=activation_fn
         )
 
-        # Create the action distribution
-        self.dist = make_proba_distribution(action_space)
-
         # Actor head
-        if isinstance(action_space, spaces.Box):
-            # Continuous
-            self.action_net = nn.Linear(self.mlp_extractor.latent_dim_pi, action_space.shape[0])
-            self.log_std = nn.Parameter(th.zeros(action_space.shape[0]))
-        else:
-            # Discrete
-            self.action_net = nn.Linear(self.mlp_extractor.latent_dim_pi, action_space.n)
-            self.log_std = None
-
+        dim = action_space.shape[0]
+        self.action_net = nn.Linear(self.mlp_extractor.latent_dim_pi, dim)
+        self.cov_net = nn.Sequential(
+            nn.Linear(self.mlp_extractor.latent_dim_pi, dim),
+            nn.Softplus()
+        )
         # Critic head
         self.value_net = nn.Linear(self.mlp_extractor.latent_dim_vf, 1)
 
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m: nn.Module):
-        if isinstance(m, nn.Linear):
-            nn.init.orthogonal_(m.weight, gain=th.nn.init.calculate_gain('relu'))
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
+        # self.apply(self._init_weights)
+    # def _init_weights(self, m: nn.Module):
+    #     if isinstance(m, nn.Linear):
+    #         nn.init.orthogonal_(m.weight, gain=th.nn.init.calculate_gain('relu'))
+    #         if m.bias is not None:
+    #             nn.init.constant_(m.bias, 0)
 
     def forward(self, obs: th.Tensor, deterministic: bool = False):
         """
@@ -108,33 +98,46 @@ class CustomPolicy(ActorCriticPolicy):
         SB3 expects: actions, values, log_probs
         """
         distribution, value = self._get_dist_and_value(obs)
+        distribution: th.distributions.multivariate_normal.MultivariateNormal
         if deterministic:
-            actions = distribution.mode()
+            actions = distribution.mean
         else:
             actions = distribution.sample()
 
         log_probs = distribution.log_prob(actions)
         return actions, value, log_probs
 
+
     def _get_dist_and_value(self, obs: th.Tensor):
-        # Extract features using the parent class's feature extractor
-        features = self.extract_features(obs)
-        pi_latent = self.mlp_extractor.forward_actor(features)
-        vf_latent = self.mlp_extractor.forward_critic(features)
+
+        pi_latent = self.mlp_extractor.forward_actor(obs)
+        vf_latent = self.mlp_extractor.forward_critic(obs)
 
         dist = self._get_action_dist_from_latent(pi_latent)
         value = self.value_net(vf_latent)
         return dist, value
 
     def _get_action_dist_from_latent(self, pi_latent: th.Tensor):
-        if self.log_std is not None:
-            # Continuous actions
-            mean = self.action_net(pi_latent)
-            return self.dist.proba_distribution(mean, self.log_std.exp())
-        else:
-            # Discrete actions
-            logits = self.action_net(pi_latent)
-            return self.dist.proba_distribution(logits=logits)
+        # Continuous actions
+        mean = self.action_net(pi_latent)
+        diag = self.cov_net(pi_latent)
+        diag = diag + 1e-5
+        cov_matrix = th.diag_embed(diag)
+        dist = th.distributions.MultivariateNormal(mean, covariance_matrix=cov_matrix)
+        return dist
+
+        # Old code to get complete covariance matrix from lower triangular part
+        # dim = mean.shape[-1]
+        # batch_size = mean.shape[0]
+        # construct full matrix from lower triangular part
+        # L_elements = self.cov_net(pi_latent)
+        # L = th.zeros((batch_size, dim, dim), device=pi_latent.device)
+        # tril_indices = th.tril_indices(row=dim, col=dim, offset=0)
+        # L[:, tril_indices[0], tril_indices[1]] = L_elements
+        # cov_matrix = L @ L.transpose(-1, -2)
+        # small_identity = th.eye(dim) * 1e-5
+        # cov_matrix = cov_matrix + small_identity
+
 
     def _get_value(self, obs: th.Tensor):
         """
