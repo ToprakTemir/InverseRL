@@ -69,7 +69,7 @@ def plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path=None
     # Load dataset, environment, and the state evaluator model
     if state_evaluator_path is None:
         state_evaluator_path = "models/state_evaluators/state_evaluator_02.19-14:43.pth"
-    dataset = minari.load_dataset("xarm_push_3d_action_space_1k-v0")
+    dataset = minari.load_dataset("xarm_push_3d_action_space_closer_1k-v0")
 
     state_evaluator = StateEvaluator(3)
     state_evaluator.load_state_dict(torch.load(state_evaluator_path))
@@ -200,7 +200,7 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, mode="
     else:
         initial_policy_path = path
 
-    dataset = minari.load_dataset("xarm_push_3d_action_space_1k-v0")
+    dataset = minari.load_dataset("xarm_push_3d_action_space_closer_1k-v0")
 
     initial_policy = CustomPolicy(dataset.observation_space, dataset.action_space)
     pretrained_weights = torch.load(initial_policy_path, map_location=torch.device('cpu'))
@@ -334,7 +334,7 @@ if __name__ == "__main__":
 
     # STATE EVALUATOR TESTS
     # plot_evaluator_training_info()
-    state_evaluator_path = "models/state_evaluators/state_evaluator_02.21-03:27.pth"
+    state_evaluator_path = "models/state_evaluators/best_state_evaluator_02.27-04:56.pth"
     plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path)
     plot_evaluator_guesses_in_2d_plane(state_evaluator_path)
 

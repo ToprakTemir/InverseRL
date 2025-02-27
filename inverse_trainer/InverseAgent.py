@@ -78,7 +78,7 @@ class InverseAgent(nn.Module):
         # total_steps_in_dataset = sum([len(ep.observations) for ep in self.dataset.iterate_episodes()])
         self.batch_size = 32
 
-        self.num_epochs_for_state_evaluator = 32_000_000 // self.batch_size
+        self.num_epochs_for_state_evaluator = 1_600_000 // self.batch_size
         self.num_epochs_for_initial_policy = 32_000_000 // self.batch_size
 
         self.total_steps_for_inverse_skill = 10_000_000
@@ -160,7 +160,7 @@ class InverseAgent(nn.Module):
             mse_loss = self.mse_loss(predicted_timestamps, batch_targets)
             total_variation_loss = torch.mean(torch.abs(predicted_timestamps[1:] - predicted_timestamps[:-1]))
 
-            loss = mse_loss + 0.1 * total_variation_loss
+            loss = mse_loss + 0.0 * total_variation_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -377,13 +377,13 @@ class InverseAgent(nn.Module):
             raise Exception("Initial policy is not trained yet.")
 
 
-        num_envs = multiprocessing.cpu_count() // 4
+        num_envs = multiprocessing.cpu_count()
         print(f"num envs: {num_envs}")
         env = SubprocVecEnv([self.create_inverse_trainer_environment for _ in range(num_envs)])
 
-        inverse_model = PPO(CustomPolicy, env=env, verbose=1, device="cpu", n_epochs=30, vf_coef=1.0, learning_rate=3e-4)
+        inverse_model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
         inverse_model.policy.load_state_dict(self.initial_policy.state_dict())
-        inverse_model.policy.optimizer.load_state_dict(self.initial_policy_optimizer.state_dict())
+        # inverse_model.policy.optimizer.load_state_dict(self.initial_policy_optimizer.state_dict())
 
         time = datetime.now().strftime('%m.%d-%H:%M')
         model_path = f"./models/inverse_model_logs/{time}"
@@ -422,12 +422,12 @@ if __name__ == "__main__":
     env = XarmTableEnv(control_option="ee_pos")
     inverse_agent = InverseAgent(env, dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    # path = "models/state_evaluators/state_evaluator_02.21-03:27.pth"
-    path = None
+    path = "models/state_evaluators/best_state_evaluator_02.27-04:56.pth"
+    # path = None
     inverse_agent.train_state_evaluator(load_from_path=path, device=device)
 
     path = "./models/initial_policies/best_initial_policy_log_prob_02.27-03:16.pth"
     # path = None
     inverse_agent.pretrain_policy(load_from_path=path, device=device)
 
-    # inverse_agent.train_inverse_model()
+    inverse_agent.train_inverse_model()
