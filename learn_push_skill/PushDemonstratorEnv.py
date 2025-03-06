@@ -31,7 +31,7 @@ class PushDemonstratorEnv(Wrapper):
 
         # HYPERPARAMETERS
         # self.MIN_ANGLE = np.pi / 6  # general, wide angle
-        self.MIN_ANGLE = 89 * (np.pi / 180)  # directly forward
+        self.MIN_ANGLE = 87 * (np.pi / 180)  # directly forward
         self.MIN_R = 0.42
         self.MAX_R = 0.45
 
@@ -185,7 +185,9 @@ def generate_push_trajectory(env, speed=0.002, pre_push_offset=0.1, push_distanc
     #     for pos in traj_positions
     # ]
     # traj_actions = np.array(traj_actions).astype(np.float32)
+
     traj_actions = np.array(traj_positions).astype(np.float32)
+    traj_actions = [np.concatenate([pos, [np.random.random()]]) for pos in traj_actions]
     return traj_actions
 
 
@@ -235,9 +237,8 @@ def collect_push_demo(dataset_id, num_demos, render_mode=None):
 
 if __name__ == "__main__":
 
-    num_demos = 1
-    dataset_id = f"xarm_push_3d_directly_forward_lower_dimensions_1-v0"
-
+    num_demos = 20
+    dataset_id = f"xarm_push_4d_action_space_random_gripper_directly_forward_20-v0"
 
     collect_push_demo(dataset_id, num_demos)
     # collect_push_demo(dataset_id, num_demos, render_mode="human")

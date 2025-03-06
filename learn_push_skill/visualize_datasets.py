@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Load the dataset
-dataset = minari.load_dataset("xarm_push_3d_action_space_closer_1k-v0")
+dataset = minari.load_dataset("xarm_push_4d_action_space_random_gripper_20-v0")
 
 # Set plot limits
 x_min, x_max = -1, 1

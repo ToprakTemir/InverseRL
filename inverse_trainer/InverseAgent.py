@@ -13,15 +13,12 @@ import minari
 from minari import MinariDataset
 import gymnasium as gym
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement
-from stable_baselines3.common.vec_env import SubprocVecEnv
-from tensorflow.python.keras.utils.version_utils import training
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 
 from StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
-from CustomPolicy import CustomPolicy
+from CustomPPOPolicy import CustomPolicy
 from environments.XarmTableEnvironment import XarmTableEnv
-
-from plot_logs import plot_initial_policy_guesses_compared_to_reverse_trajectory
 
 from gymnasium.envs.registration import register
 
@@ -79,9 +76,9 @@ class InverseAgent(nn.Module):
         self.batch_size = 32
 
         self.num_epochs_for_state_evaluator = 1_600_000 // self.batch_size
-        self.num_epochs_for_initial_policy = 32_000_000 // self.batch_size
+        self.num_epochs_for_initial_policy = 8_000_000 // self.batch_size
 
-        self.total_steps_for_inverse_skill = 10_000_000
+        self.total_steps_for_inverse_skill = 10_000_000 * 8
 
 
     def remove_robot_indices(self, obs) -> np.ndarray:
@@ -117,10 +114,6 @@ class InverseAgent(nn.Module):
         """
         trains the state evaluator to predict the timestamp of a given point in the trajectory
         """
-
-        # TODO: right now, the inverse RL agent will try to get to a state so that its observation will be given 0 (initial state) by state evaluator
-        # but state evaluator is only trained by the demonstrations, what if the RL agent gets to a state that is not in the demonstrations at all,
-        # and state evaluator gives a random point, possibly close to 0? Then RL agent will get a reward for that, which is not what we want.
 
         self.create_state_evaluator(state_evaluator_path=load_from_path, device=device)
 
@@ -160,7 +153,7 @@ class InverseAgent(nn.Module):
             mse_loss = self.mse_loss(predicted_timestamps, batch_targets)
             total_variation_loss = torch.mean(torch.abs(predicted_timestamps[1:] - predicted_timestamps[:-1]))
 
-            loss = mse_loss + 0.0 * total_variation_loss
+            loss = mse_loss + 0.15 * total_variation_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -245,22 +238,6 @@ class InverseAgent(nn.Module):
         model_save_path = f"./models/initial_policies/initial_policy_{loss_option}_{time_id}.pth"
         best_model_path = f"./models/initial_policies/best_initial_policy_{loss_option}_{time_id}.pth"
 
-        # obs = list(self.dataset.iterate_episodes())[0].observations[0]
-        # target = torch.tensor([0, -1, 0], dtype=torch.float32, device=device)
-        # obs = torch.tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
-        # target = target.unsqueeze(0)
-        # for i in range(100):
-        #     dist, _ = self.initial_policy._get_dist_and_value(obs)
-        #     log_prob = dist.log_prob(target)
-        #     loss = -log_prob.mean()
-        #
-        #     optimizer.zero_grad()
-        #     loss.backward()
-        #     optimizer.step()
-        #
-        #     print(f"dist mean: {dist.mean}, target: {target}, loss = {loss.item()}")
-
-
         for i in range(self.num_epochs_for_initial_policy):
             episode = list(self.dataset.sample_episodes(1))[0]
             indexes = np.random.choice(len(episode.observations), size=self.batch_size, replace=True)
@@ -272,7 +249,7 @@ class InverseAgent(nn.Module):
             target_actions = torch.tensor(target_actions, dtype=torch.float32, device=device)
 
             if loss_option == "log_prob":
-                dist, _ = self.initial_policy._get_dist_and_value(states)
+                dist = self.initial_policy.get_distribution(states)
                 log_prob = dist.log_prob(target_actions)
                 loss = -log_prob.mean()
             elif loss_option == "MSE":
@@ -306,7 +283,7 @@ class InverseAgent(nn.Module):
                         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
                         prev_action = torch.tensor(prev_action, dtype=torch.float32, device=device).unsqueeze(0)
 
-                        dist, _ = self.initial_policy._get_dist_and_value(state)
+                        dist = self.initial_policy.get_distribution(state)
                         log_prob = dist.log_prob(prev_action)
                         log_prob_loss = -log_prob.mean()
 
@@ -363,12 +340,43 @@ class InverseAgent(nn.Module):
         assert isinstance(self.env, MujocoEnv), "InverseTrainerEnv should be a MujocoEnv"
 
         trainer_env = InverseTrainerEnv(self.env, self.state_evaluator, self.dataset, self.non_robot_indices_in_obs)
-        trainer_env = TimeLimit(trainer_env, max_episode_steps=max_episode_steps)
         self.inverse_trainer_environment = trainer_env
+
+        # trainer_env.env.render_mode = "human"
 
         return trainer_env
 
-    def train_inverse_model(self):
+    # def pretrain_PPO(self):
+    #     """
+    #     pretrain PPO directly, instead of custom policy, by BC
+    #     """
+    #
+    #     self.inverse_model = PPO("MlpPolicy", self.env, verbose=1, device="cpu")
+    #     self.inverse_model_optimizer = optim.Adam(self.inverse_model.policy.parameters(), lr=self.lr)
+    #
+    #     for epoch in range(100_000):
+    #         episode = list(self.dataset.sample_episodes(1))[0]
+    #         indexes = np.random.choice(len(episode.observations), size=self.batch_size, replace=True)
+    #
+    #         states = episode.observations[indexes]
+    #         target_actions = episode.actions[indexes - 10]
+    #         target_actions = torch.tensor(target_actions, dtype=torch.float32, device=device, requires_grad=True)
+    #
+    #         predicted_action, _ = self.inverse_model.predict(states)
+    #         predicted_action = torch.tensor(predicted_action, dtype=torch.float32, device=device, requires_grad=True)
+    #
+    #         loss = self.mse_loss(predicted_action, target_actions)
+    #
+    #         self.inverse_model_optimizer.zero_grad()
+    #         loss.backward()
+    #         self.inverse_model_optimizer.step()
+    #
+    #         if epoch % 1000 == 0:
+    #             print(f"epoch: {epoch}, loss: {loss.item()}")
+
+
+
+    def train_inverse_PPO(self, continue_from_path=None):
 
         if not self.state_evaluator_trained:
             raise Exception("State evaluator is not trained yet.")
@@ -376,29 +384,33 @@ class InverseAgent(nn.Module):
         if not self.initial_policy_trained:
             raise Exception("Initial policy is not trained yet.")
 
-
-        num_envs = multiprocessing.cpu_count()
+        num_envs = multiprocessing.cpu_count() * 2
         print(f"num envs: {num_envs}")
-        env = SubprocVecEnv([self.create_inverse_trainer_environment for _ in range(num_envs)])
 
-        inverse_model = PPO(CustomPolicy, env=env, verbose=1, device="cpu")
-        inverse_model.policy.load_state_dict(self.initial_policy.state_dict())
-        # inverse_model.policy.optimizer.load_state_dict(self.initial_policy_optimizer.state_dict())
+        # ENV OPTION HERE
+        env = SubprocVecEnv([self.create_inverse_trainer_environment for _ in range(num_envs)])
+        # env = DummyVecEnv([self.create_inverse_trainer_environment])
+
+        if continue_from_path is None:
+            inverse_model = PPO(CustomPolicy, env=env, verbose=1, device="cpu", vf_coef=1.0, ent_coef=0, use_sde=True) # standard ent_coef is 0.0 for PPO
+            inverse_model.policy.load_state_dict(self.initial_policy.state_dict(), strict=False)
+        else:
+            inverse_model = PPO.load(continue_from_path, env=env, device="cpu")
 
         time = datetime.now().strftime('%m.%d-%H:%M')
-        model_path = f"./models/inverse_model_logs/{time}"
-        os.mkdir(model_path)
+        model_dir = f"./models/inverse_model_logs/{time}"
+        os.mkdir(model_dir)
 
         total_timesteps = self.total_steps_for_inverse_skill
         save_freq = 64_000
         report_freq = 1000
 
-        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_path)
+        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path=model_dir)
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
         eval_callback = EvalCallback(
             env,
-            best_model_save_path=model_path,
-            log_path=model_path,
+            best_model_save_path=model_dir,
+            log_path=model_dir,
             eval_freq=report_freq,
             callback_after_eval=stop_callback
         )
@@ -412,9 +424,11 @@ class InverseAgent(nn.Module):
         self.inverse_model.save(f"./models/inverse_model_{time}")
 
 
+
+
 if __name__ == "__main__":
-    dataset = minari.load_dataset("xarm_push_3d_action_space_closer_1k-v0")
-    validation_dataset = minari.load_dataset("xarm_push_3d_action_space_closer_5k-v0")
+    dataset = minari.load_dataset("xarm_push_4d_action_space_random_gripper_20-v0")
+    validation_dataset = minari.load_dataset("xarm_push_4d_action_space_random_gripper_1k-v0")
 
     # dataset = minari.load_dataset("xarm_push_3d_directly_forward_1-v0")
     # validation_dataset = None
@@ -422,12 +436,16 @@ if __name__ == "__main__":
     env = XarmTableEnv(control_option="ee_pos")
     inverse_agent = InverseAgent(env, dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    path = "models/state_evaluators/best_state_evaluator_02.27-04:56.pth"
+    path = "models/state_evaluators/best_state_evaluator_03.04-03:31.pth" # trained on 4d_action_space_random_gripper
+    # path = "models/state_evaluators/best_state_evaluator_03.05-16:50.pth" # trained on same_directly_forward
     # path = None
     inverse_agent.train_state_evaluator(load_from_path=path, device=device)
 
-    path = "./models/initial_policies/best_initial_policy_log_prob_02.27-03:16.pth"
+    path = "./models/initial_policies/best_initial_policy_log_prob_03.04-18:34.pth" # trained on 4d_action_space_random_gripper
+    # path = "./models/initial_policies/best_initial_policy_log_prob_03.05-16:57.pth" # trained on same_directly_forward
     # path = None
     inverse_agent.pretrain_policy(load_from_path=path, device=device)
 
-    inverse_agent.train_inverse_model()
+    # path = "./models/inverse_model_logs/03.04-21:26/rl_model_9728000_steps.zip"
+    path=None
+    inverse_agent.train_inverse_PPO(continue_from_path=path)

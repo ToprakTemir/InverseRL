@@ -20,7 +20,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
     def __init__(
         self,
         xml_file="xarm7_tabletop.xml",
-        control_option="ee_pos", # joint_angles or ee_pos
+        control_option="ee_pos", # joint_angles / ee_pos / discrete_ee_pos
         frame_skip=5,
         distance_weight=1.0,
         control_penalty_weight=0.1,    # penalty factor for large control actions
@@ -63,9 +63,12 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         self.robot_base = np.array([0, -1, 0])
         if self.control_option == "ee_pos":
             R = 0.9 # the max reach of robot
+
+            self.robot_base = np.array([0, -1, 0, 0])
+            # (x, y, z, gripper)
             self.action_space = spaces.Box(
-                low=np.array([-R, 0, -0.04]) + self.robot_base, # I don't let going backward or underground, hence min y and z is 0
-                high=np.array([R, R, R]) + self.robot_base,
+                low=np.array([-R, 0, -0.04, -1e-10]) + self.robot_base, # I don't let going backward or underground, hence min y and z is 0
+                high=np.array([R, R, R, 1 + 1e-10]) + self.robot_base,
                 dtype=np.float32,
             )
 
@@ -82,17 +85,50 @@ class XarmTableEnv(MujocoEnv, EzPickle):
 
 
     def step(self, action):
+        if action.shape[0] == 1:
+            action = action[0]
         if self.control_option == "joint_angles":
             action[7] *= 255
             action[7].clip(0, 255)
             self.do_simulation(action, self.frame_skip)
+
         elif self.control_option == "ee_pos":
-            self.data.mocap_pos = action
+            action[3] *= 255
+            action[3].clip(0, 255)
+
+            self.data.mocap_pos = action[:3]
             self.data.mocap_quat = [0, 0, 0, 1]
-            self.data.ten_length = 0
-            mujoco.mj_step(self.model, self.data)
-            mujoco.mj_kinematics(self.model, self.data)
-            mujoco.mj_forward(self.model, self.data)
+            self.data.ten_length = action[3]
+
+            for i in range(self.frame_skip):
+                mujoco.mj_step(self.model, self.data)
+                mujoco.mj_kinematics(self.model, self.data)
+                mujoco.mj_forward(self.model, self.data)
+
+        elif self.control_option == "discrete_ee_pos":
+            action_mapping = {
+                0: np.array([0.05, 0, -0.034, 0]),  # Move +X
+                1: np.array([-0.05, 0, -0.034, 0]),  # Move -X
+                2: np.array([0, 0.05, -0.034, 0]),  # Move +Y
+                3: np.array([0, -0.05, -0.034, 0]),  # Move -Y
+                4: np.array([0, 0, 0, 255]),  # Close gripper
+                5: np.array([0, 0, 0, 0]),  # Open gripper
+            }
+
+            # assert action is a one hot encoded vector
+            assert np.sum(action) == 1, "Action must be one hot encoded"
+            action = np.argmax(action)
+            action = action_mapping[action]
+
+            self.data.mocap_pos = action[:3]
+            self.data.mocap_quat = [0, 0, 0, 1]
+            self.data.ten_length = action[3]
+            for i in range(self.frame_skip):
+                mujoco.mj_step(self.model, self.data)
+                mujoco.mj_kinematics(self.model, self.data)
+                mujoco.mj_forward(self.model, self.data)
+
+
         else:
             raise ValueError(f"Invalid control option: {self.control_option}")
 
@@ -110,7 +146,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         model = self.model
         data = self.data
         # print(f"distance between mocap and ee: {np.linalg.norm(mocap_pos - ee_pos)}")
-        MAX_WAIT = 300
+        MAX_WAIT = 200
         cur = 0
         while np.linalg.norm(mocap_pos - ee_pos) > 0.05:
             mujoco.mj_step(model, data)
@@ -180,7 +216,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         gripper_closeness = self.model.tendon_length0 / 255
         ee_pos = self.get_ee_pos()
 
-        # IMPORTANT: high/low level observation settings here
+        # important: high/low level observation settings here
         if self.observation_dim == 14:
             return np.concatenate([cube_pos, joint_pos, gripper_closeness, ee_pos]).astype(np.float32)
         elif self.observation_dim == 6:

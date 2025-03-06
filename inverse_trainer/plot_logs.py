@@ -10,10 +10,10 @@ from StateEvaluator import StateEvaluator
 import minari
 import random
 
-from CustomPolicy import CustomPolicy
+from CustomPPOPolicy import CustomPolicy
 
 
-def plot_evaluator_training_info():
+def plot_evaluator_training_info(evaluator_differences_path=None):
     """
     Loads training data from a NumPy file and plots:
       1) The predicted and actual values as lines versus steps.
@@ -24,7 +24,6 @@ def plot_evaluator_training_info():
         sigma (float): The standard deviation for the Gaussian kernel used to smooth the differences.
     """
     # Path to the .npy file containing numbers.
-    evaluator_differences_path = "./logs/state_evaluator_differences_02.19-14:43.npy"
     training_data = np.load(evaluator_differences_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
 
@@ -172,8 +171,7 @@ def plot_evaluator_guesses_in_2d_plane(state_evaluator_path=None):
     plt.show()
 
 
-def plot_initial_policy_training_info():
-    losses_path = "./logs/initial_policy_differences_02.19-18:58.npy"
+def plot_initial_policy_training_info(losses_path = None):
     training_data = np.load(losses_path, allow_pickle=True)
     training_data = [item for item in training_data if item is not None]
 
@@ -194,9 +192,9 @@ def plot_initial_policy_training_info():
     plt.tight_layout()
     plt.show()
 
-def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, mode="ee_pos", start_from_end=False):
+def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, mode="ee_pos"):
     if path is None:
-        initial_policy_path = "models/initial_policies/best_initial_policy_02.20-19:27_LP.pth"
+        raise ValueError("No initial policy provided")
     else:
         initial_policy_path = path
 
@@ -204,7 +202,7 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, mode="
 
     initial_policy = CustomPolicy(dataset.observation_space, dataset.action_space)
     pretrained_weights = torch.load(initial_policy_path, map_location=torch.device('cpu'))
-    initial_policy.load_pretrained_weights(pretrained_weights)
+    initial_policy.load_state_dict(pretrained_weights)
 
     if mode == "ee_pos":
         dim = 3
@@ -225,7 +223,7 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, mode="
     actual_joint_angles = np.zeros((total_steps, dim))
     predicted_joint_angles = np.zeros((total_steps, dim))
 
-    for step_idx, obs in enumerate(observations):
+    for step_idx, obs in enumerate(observations_rewound):
         obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
         predicted, _, _ = initial_policy(obs_tensor, deterministic=deterministic)
         predicted = predicted.squeeze(0)
@@ -238,7 +236,6 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, mode="
             actual_joint_angles[step_idx] = obs[3:10]
 
     # actual_joint_angles = actual_joint_angles[::-1]
-
 
     for joint_idx in range(dim):
         if plot_style == "scatter":
@@ -266,18 +263,15 @@ def plot_initial_policy_guesses_compared_to_reverse_trajectory(path=None, mode="
 
 
 
-def plot_ppo_evaluations():
-
-    time = "02.21-01:54"
-    ppo_evaluations_path = f"./models/inverse_model_logs/{time}/evaluations.npz"
+def plot_ppo_evaluations(path=None):
 
     # Load the values from the file
-    data = np.load(ppo_evaluations_path)
+    data = np.load(path)
     timesteps = data["timesteps"]
     results = data["results"]
     results = [np.mean(results[i]) for i in range(len(results))]
 
-    smoothed_results = gaussian_filter1d(results, sigma=100)
+    smoothed_results = gaussian_filter1d(results, sigma=40)
 
     # Plot both the original and smoothed data
     plt.figure(figsize=(10, 6))
@@ -333,16 +327,20 @@ def show_difference_between_datasets(dataset1, dataset2, num_plots=5):
 if __name__ == "__main__":
 
     # STATE EVALUATOR TESTS
-    # plot_evaluator_training_info()
-    state_evaluator_path = "models/state_evaluators/best_state_evaluator_02.27-04:56.pth"
+    evaluator_differences_path = "./logs/state_evaluator_differences_03.04-03:31.npy"
+    state_evaluator_path = "models/state_evaluators/best_state_evaluator_03.04-03:31.pth"
+    plot_evaluator_training_info(evaluator_differences_path)
     plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path)
     plot_evaluator_guesses_in_2d_plane(state_evaluator_path)
 
     # INITIAL POLICY TESTS
-    # plot_initial_policy_training_info()
-    # plot_initial_policy_guesses_compared_to_reverse_trajectory(start_from_end=True)
+    # losses_path = "./logs/initial_policy_differences_03.02-23:35.npy"
+    # initial_policy_path = "models/initial_policies/best_initial_policy_log_prob_03.02-23:35.pth"
+    # plot_initial_policy_training_info(losses_path)
+    # plot_initial_policy_guesses_compared_to_reverse_trajectory(path=initial_policy_path)
 
     # show_difference_between_datasets(dataset1="xarm_synthetic_push_50-v0", dataset2="xarm_synthetic_push_1k-v0")
 
     # FINAL MODEL TEST
-    # plot_ppo_evaluations()
+    # ppo_evaluations_path = f"./models/inverse_model_logs/03.05-21:37/evaluations.npz"
+    # plot_ppo_evaluations(path=ppo_evaluations_path)

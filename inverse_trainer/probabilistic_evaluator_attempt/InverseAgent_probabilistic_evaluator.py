@@ -80,10 +80,6 @@ class InverseAgent(nn.Module):
         trains the state evaluator to predict the timestamp of a given point in the trajectory
         """
 
-        # TODO: ask: right now, the inverse RL agent will try to get to a state so that its observation will be given 0 (initial state) by state evaluator
-        # but state evaluator is only trained by the demonstrations, what if the RL agent gets to a state that is not in the demonstrations at all,
-        # and state evaluator gives a random point, possibly close to 0? Then RL agent will get a reward for that, which is not what we want.
-
         if self.object_indices_in_obs is None:
             print("object_indices_in_obs is None, using the whole observation for StateEvaluator")
             self.state_evaluator = StateEvaluator(self.state_dim).to(device)
