@@ -30,8 +30,8 @@ class PushDemonstratorEnv(Wrapper):
         self.default_ee_closeness = [0]
 
         # HYPERPARAMETERS
-        # self.MIN_ANGLE = np.pi / 6  # general, wide angle
-        self.MIN_ANGLE = 87 * (np.pi / 180)  # directly forward
+        self.MIN_ANGLE = np.pi / 6  # general, wide angle
+        # self.MIN_ANGLE = 87 * (np.pi / 180)  # directly forward
         self.MIN_R = 0.42
         self.MAX_R = 0.45
 
@@ -238,9 +238,9 @@ def collect_push_demo(dataset_id, num_demos, render_mode=None):
 if __name__ == "__main__":
 
     num_demos = 20
-    dataset_id = f"xarm_push_4d_action_space_random_gripper_directly_forward_20-v0"
+    dataset_id = f"xarm_push_4d_action_space_random_gripper_{num_demos}-v0"
 
-    collect_push_demo(dataset_id, num_demos)
+    collect_push_demo(dataset_id, num_demos, render_mode="human")
     # collect_push_demo(dataset_id, num_demos, render_mode="human")
 
     # FILTERING THE DEMO

@@ -64,7 +64,7 @@ def plot_evaluator_training_info(evaluator_differences_path=None):
     plt.show()
 
 
-def plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path=None):
+def plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path=None, title=None):
     # Load dataset, environment, and the state evaluator model
     if state_evaluator_path is None:
         state_evaluator_path = "models/state_evaluators/state_evaluator_02.19-14:43.pth"
@@ -113,15 +113,17 @@ def plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path=None
     # Plot the diagonal line (perfect prediction) for reference
     plt.plot([0, 1], [0, 1], "k--", label="Ideal")
 
-    plt.xlabel("Actual Timestamp")
-    plt.ylabel("Predicted Timestamp")
-    plt.title("Predicted vs Actual Timestamps (All Episodes)")
-    plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize=8)  # Move legend outside the plot
+    plt.xlabel("Actual Timestamp", fontsize=14)
+    plt.ylabel("Predicted Timestamp", fontsize=14)
+    if title is None:
+        title = "Predicted vs Actual Timestamps (All Episodes)"
+    # plt.title(title)
+    # plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), fontsize=15)  # Move legend outside the plot
     plt.grid(True)
     plt.tight_layout()
     plt.show()
 
-def plot_evaluator_guesses_in_2d_plane(state_evaluator_path=None):
+def plot_evaluator_guesses_in_2d_plane(state_evaluator_path=None, title=None):
     """
     Visualizes the state evaluator's predictions over a 2D grid of object locations.
     Uses a smooth colormap to enhance distinguishability in abrupt value changes.
@@ -164,9 +166,13 @@ def plot_evaluator_guesses_in_2d_plane(state_evaluator_path=None):
     plt.figure(figsize=(10, 8))
     plt.imshow(predictions, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="turbo", interpolation="bilinear")
     plt.colorbar(label="State Evaluator Prediction")
-    plt.xlabel("X Position (m)")
-    plt.ylabel("Y Position (m)")
-    plt.title("State Evaluator Predictions in 2D Plane")
+    # plt.xlabel("X Position (m)")
+    # plt.ylabel("Y Position (m)")
+
+    if title is None:
+        title = "State Evaluator Predictions in 2D Plane"
+
+    # plt.title(title)
     plt.grid(True, linestyle="--", alpha=0.3)
     plt.show()
 
@@ -269,7 +275,7 @@ def plot_ppo_evaluations(path=None):
     data = np.load(path)
     timesteps = data["timesteps"]
     results = data["results"]
-    results = [np.mean(results[i]) for i in range(len(results))]
+    results = [np.max(results[i]) for i in range(len(results))]
 
     smoothed_results = gaussian_filter1d(results, sigma=40)
 
@@ -322,9 +328,68 @@ def show_difference_between_datasets(dataset1, dataset2, num_plots=5):
         plt.tight_layout()
         plt.show()
 
+def make_cool_state_eval_plot():
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyArrow
+
+    # Generate time values
+    t = np.linspace(0, 1, 100)
+
+    # Generate multiple demonstration curves
+    np.random.seed(42)
+    demonstrations = [np.sin(2 * np.pi * t) * np.random.uniform(0.8, 1.2) + np.random.uniform(-0.1, 0.1) for _ in
+                      range(10)]
+
+    # Chosen demonstration for training
+    chosen_demo = demonstrations[3]
+
+    # Simulate timestamps as labels (normalized time for training)
+    timestamps = np.linspace(0, 1, len(chosen_demo))  # Target for the model
+
+    def plot_demonstrations():
+        """Plots multiple demonstrations (D)."""
+        plt.figure(figsize=(6, 4))
+
+        for demo in demonstrations:
+            plt.plot(t, demo, 'k', alpha=0.7)
+
+        plt.title("Demonstrations (D)")
+        plt.xlabel("time")
+        plt.ylabel(r"$SM(t)$")
+
+        plt.show()
+
+    def plot_training_diagram():
+        """Plots the chosen demonstration, highlighting timestamps as training targets."""
+        plt.figure(figsize=(6, 4))
+
+        # Plot chosen demonstration
+        plt.plot(t, chosen_demo, 'k', label="Seçilen Gösterim")
+
+        # Scatter plot with color gradient indicating timestamps
+        sc = plt.scatter(t, chosen_demo, c=timestamps, cmap="coolwarm", edgecolors="black", label="Eğitim Veri Noktaları")
+
+        # Add colorbar to show timestamp intensity
+        cbar = plt.colorbar(sc)
+        cbar.set_label("Zaman İndexi (Eğitim Hedefi)")
+
+        # Labels and formatting
+        plt.title("Çevre Gözlemi -> Zaman İndeksi Eğitimi")
+        plt.xlabel("Zaman")
+        plt.ylabel(r"Gözlem")
+        plt.legend()
+
+        plt.show()
+
+    # Call functions to generate separate plots
+    plot_demonstrations()
+    plot_training_diagram()
+
 
 
 if __name__ == "__main__":
+    # make_cool_state_eval_plot()
 
     # STATE EVALUATOR TESTS
     evaluator_differences_path = "./logs/state_evaluator_differences_03.04-03:31.npy"
@@ -332,6 +397,19 @@ if __name__ == "__main__":
     plot_evaluator_training_info(evaluator_differences_path)
     plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path)
     plot_evaluator_guesses_in_2d_plane(state_evaluator_path)
+
+    # PLOTTING 4 DIFFERENT TVL VALUED EVALUATOR
+    # id1 = "models/state_evaluators/state_evaluator_03.02-23:29_no_TVL.pth"
+    # id2 = "models/state_evaluators/state_evaluator_03.04-03:09_TVL_01.pth"
+    # id3 = "models/state_evaluators/state_evaluator_03.04-03:20_TVL_02.pth"
+    # id4 = "models/state_evaluators/state_evaluator_03.04-03:31_TVL_015.pth"
+    #
+    # notes = ["No TVL", "TVL=0.1", "TVL=0.2", "TVL=0.15"]
+    # i = 0
+    # for id in [id1, id2, id4, id3]:
+    #     plot_evaluator_guesses_compared_to_real_timestamps(id, title=notes[i])
+    #     plot_evaluator_guesses_in_2d_plane(id, title=notes[i])
+    #     i += 1
 
     # INITIAL POLICY TESTS
     # losses_path = "./logs/initial_policy_differences_03.02-23:35.npy"
@@ -342,5 +420,10 @@ if __name__ == "__main__":
     # show_difference_between_datasets(dataset1="xarm_synthetic_push_50-v0", dataset2="xarm_synthetic_push_1k-v0")
 
     # FINAL MODEL TEST
-    # ppo_evaluations_path = f"./models/inverse_model_logs/03.05-21:37/evaluations.npz"
+    # ppo_evaluations_path = f"./models/inverse_model_logs/03.06-03:42/evaluations.npz"
     # plot_ppo_evaluations(path=ppo_evaluations_path)
+
+    # Pure PPO rewards
+    # path = f"./models/pure_PPOs/03.07-01:48/evaluations.npz"
+    # plot_ppo_evaluations(path)
+

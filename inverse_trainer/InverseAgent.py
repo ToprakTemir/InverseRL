@@ -436,10 +436,18 @@ if __name__ == "__main__":
     env = XarmTableEnv(control_option="ee_pos")
     inverse_agent = InverseAgent(env, dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    path = "models/state_evaluators/best_state_evaluator_03.04-03:31.pth" # trained on 4d_action_space_random_gripper
+    # path = "models/state_evaluators/best_state_evaluator_03.04-03:31.pth" # trained on 4d_action_space_random_gripper
     # path = "models/state_evaluators/best_state_evaluator_03.05-16:50.pth" # trained on same_directly_forward
     # path = None
-    inverse_agent.train_state_evaluator(load_from_path=path, device=device)
+    # inverse_agent.train_state_evaluator(load_from_path=path, device=device)
+
+    for demo_count in [50]:
+        dataset = minari.load_dataset(f"xarm_push_4d_action_space_random_gripper_{demo_count}-v0")
+        inverse_agent.dataset = dataset
+        inverse_agent.train_state_evaluator(load_from_path=None, device=device)
+        inverse_agent.state_evaluator_trained = False
+
+
 
     path = "./models/initial_policies/best_initial_policy_log_prob_03.04-18:34.pth" # trained on 4d_action_space_random_gripper
     # path = "./models/initial_policies/best_initial_policy_log_prob_03.05-16:57.pth" # trained on same_directly_forward
@@ -447,5 +455,5 @@ if __name__ == "__main__":
     inverse_agent.pretrain_policy(load_from_path=path, device=device)
 
     # path = "./models/inverse_model_logs/03.04-21:26/rl_model_9728000_steps.zip"
-    path=None
-    inverse_agent.train_inverse_PPO(continue_from_path=path)
+    # path=None
+    # inverse_agent.train_inverse_PPO(continue_from_path=path)

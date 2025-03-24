@@ -25,6 +25,7 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         distance_weight=1.0,
         control_penalty_weight=0.1,    # penalty factor for large control actions
         force_penalty_weight = 0.01,   # penalty factor for collisions
+        max_episode_steps = None,
         render_mode = None,
     ):
         EzPickle.__init__(
@@ -41,6 +42,9 @@ class XarmTableEnv(MujocoEnv, EzPickle):
         self.distance_weight = distance_weight
         self.control_penalty_weight = control_penalty_weight
         self.force_penalty_weight = force_penalty_weight
+
+        self.max_episode_steps = max_episode_steps
+        self.episode_steps = 0
 
         self.observation_dim = 14
         self.observation_space = spaces.Box(
@@ -137,7 +141,15 @@ class XarmTableEnv(MujocoEnv, EzPickle):
 
         obs = self._get_obs()
         reward = 0
+        terminated = False
+        truncated = False
         info = {}
+
+        if self.max_episode_steps is not None:
+            self.episode_steps += 1
+            if self.episode_steps > self.max_episode_steps:
+                truncated = True
+
         return obs, reward, False, False, info
 
     def wait_until_ee_reaches_mocap(self):
@@ -163,6 +175,11 @@ class XarmTableEnv(MujocoEnv, EzPickle):
                 break
 
         # print("action completed")
+
+    def reset(self):
+        obs = self.reset_model()
+        self.episode_steps = 0
+        return obs
 
     def reset_model(self):
         qpos = self.init_qpos
