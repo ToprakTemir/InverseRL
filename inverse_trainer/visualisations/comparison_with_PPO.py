@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
-# mode = "Turkish"
-mode = "English"
+mode = "Turkish"
+# mode = "English"
 
 # Üç model ismi (dosya yollarına uyacak şekilde)
 modeller = ["full_model", "pretrained_model", "pure_PPO"]
@@ -57,7 +58,8 @@ metrics_config = {
 
 
 for model_adi in modeller:
-    dosya_yolu = f"./models/final_reward_logs/03.08_{model_adi}_500_steps_distance_and_ee_reward.npz"
+    print(f"pwd: {os.getcwd()}")
+    dosya_yolu = f"{os.getcwd()}/../logs/model_logs/final_reward_logs/03.08_{model_adi}_500_steps_distance_and_ee_reward.npz"
     veri = np.load(dosya_yolu)
 
     dist_rewards = veri["dist_rewards"]
@@ -144,32 +146,45 @@ for chunk_key, filename in plot_order:
     y_stds = np.array(chunk_dict["std_values"])
 
     fig, ax = plt.subplots(figsize=(6, 4))
+    # fig, ax = plt.subplots(figsize=(6, 4), layout='constrained')
 
     # Soldaki eksen: asıl metrik (yüzdeye çevirelim)
-    y_means *= 100
-    y_stds *= 100
+    if chunk_key.startswith("pull"):
+        y_means *= 100
+        y_stds *= 100
 
     min_y = min(y_means - y_stds)
-    max_y = max(y_means + y_stds) * 1.1
+    raw_max_y = max(y_means + y_stds) * 1.1
+    max_y = np.ceil(raw_max_y / 5) * 5
     ax.set_ylim(0 if min_y < 0 else min_y, max_y)
 
-    ax.errorbar(
+    ax.set_yticks(np.linspace(0, max_y, 6))  # 6 evenly spaced ticks
+    ax.tick_params(axis='y', labelsize=16)
+    # ax.set_ylabel("Ortalama Değer (%)" if mode == "Turkish" else "Mean Value (%)")
+    # ax.yaxis.set_major_locator(plt.MaxNLocator(prune=None, nbins=5))
+
+    dot_line = ax.errorbar(
         x_pozisyonlari,
         y_means,
         yerr=[np.minimum(y_stds, y_means), y_stds],
         fmt='o',
         capsize=14,
         elinewidth=1,
-        markeredgewidth=1
+        markeredgewidth=1,
+        color='blue',
+        ecolor='blue'
     )
     ax.set_xticks(x_pozisyonlari)
+    rotation = 27
+    ha = 'right'
+    fontsize = 24
     if mode == "Turkish":
-        ax.set_xticklabels(["Tam Model", "Ön Eğitimli Model", "PPO"], rotation=15, ha='right', fontsize=12)
+        ax.set_xticklabels(["Tam Model", "Ön Eğitimli Model", "PPO"], rotation=rotation, ha=ha, fontsize=fontsize)
     else:
-        ax.set_xticklabels(["Full Model", "Pretrained Model", "PPO"], rotation=15, ha='right', fontsize=12)
+        ax.set_xticklabels(["Full Model", "Pretrained Model", "PPO"], rotation=rotation, ha=ha, fontsize=fontsize)
 
     ax.set_xlim(0, 1)
-    ax.set_title(chunk_adi, fontsize=12)
+    # ax.set_title(chunk_adi, fontsize=12)
 
     # Sağdaki eksende başarı oranları bar grafiği çizecek miyiz?
     # Başarı ile ilgili sayılar varsa success_counts anahtarından anlarız.
@@ -179,21 +194,61 @@ for chunk_key, filename in plot_order:
         success_rates = np.where(total_counts > 0, success_counts / total_counts, 0) * 100
 
         ax2 = ax.twinx()
+        ax_tics = ax.get_yticks()
+        ax2.set_yticks(np.linspace(0, 100, len(ax_tics)))  # 6 evenly spaced ticks
+        ax2.tick_params(axis='y', labelsize=16)
         ax2.set_ylim(0, 100)
-        ax2.set_ylabel("Başarı Oranı (%)" if mode == "Turkish" else "Success Rate (%)")
+        # ax2.set_ylabel("Başarı Oranı (%)" if mode == "Turkish" else "Success Rate (%)")
 
         bar_positions = x_pozisyonlari + 0.07
         bar_width = 0.1
 
-        ax2.bar(
+        bar_handle = ax2.bar(
             bar_positions,
             success_rates,
-            alpha=0.3,
-            width=bar_width
+            alpha=0.4,
+            width=bar_width,
+            color='orange'
         )
+
+        fig.legend(
+            [dot_line, bar_handle],
+            ["Ortalama ± Std (%)" if mode == "Turkish" else "Mean ± Std",
+             "Başarı Oranı (%)" if mode == "Turkish" else "Success Rate"],
+            loc="upper right",
+            bbox_to_anchor=(0.91, 0.89),
+            frameon=True,
+            fontsize=12
+        )
+    else:
+        # If no success counts, only show dot_line legend
+        if chunk_key == "distance_reward":
+            fig.legend(
+                [dot_line],
+                ["Ortalama ± Std" if mode == "Turkish" else "Mean ± Std"],
+                loc="upper right",
+                bbox_to_anchor=(0.91, 0.89),
+                frameon=True,
+                fontsize=12
+            )
+        else: # chunk_key == "final_distance"
+            fig.legend(
+                [dot_line],
+                ["Ortalama ± Std (cm)" if mode == "Turkish" else "Mean ± Std"],
+                loc="upper right",
+                bbox_to_anchor=(0.91, 0.89),
+                frameon=True,
+                fontsize=12
+            )
+
+
+    # kareli arkaplan koy: grid lines for left and right y-axes separately
+    ax.grid(visible=True, axis='y', color='gray', linestyle='--', linewidth=0.5)
+
 
     # Kaydetme
     if mode == "Turkish":
+        print(f"Kaydediliyor: comparisons_{filename}.pdf")
         plt.savefig(f"comparisons_{filename}.pdf", bbox_inches='tight', transparent=True)
     else:
         plt.savefig(f"comparisons_{filename}_english.pdf", bbox_inches='tight', transparent=True)

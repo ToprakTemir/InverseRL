@@ -8,7 +8,7 @@ from minari import DataCollector
 from gymnasium.envs.registration import register
 
 from environments.XarmTableEnvironment import XarmTableEnv
-from PushDemonstratorEnv import PushDemonstratorEnv
+from Create_Push_Database import PushDemonstratorEnv
 
 
 register(

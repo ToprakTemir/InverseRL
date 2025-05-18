@@ -15,9 +15,9 @@ import gymnasium as gym
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback, StopTrainingOnNoModelImprovement
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 
-from StateEvaluator import StateEvaluator
+from models.StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
-from CustomPPOPolicy import CustomPolicy
+from models.CustomPPOPolicy import CustomPolicy
 from environments.XarmTableEnvironment import XarmTableEnv
 
 from gymnasium.envs.registration import register
@@ -126,10 +126,10 @@ class InverseAgent(nn.Module):
 
         t0 = datetime.now()
         time_id = datetime.now().strftime('%m.%d-%H:%M')
-        log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
+        log_path = f"./logs/differences/state_evaluator_differences_{time_id}.npy"
         training_logs = []
-        model_save_path = f"./models/state_evaluators/state_evaluator_{time_id}.pth"
-        best_model_path = f"./models/state_evaluators/best_state_evaluator_{time_id}.pth"
+        model_save_path = f"logs/model_logs/state_evaluators/state_evaluator_{time_id}.pth"
+        best_model_path = f"logs/model_logs/state_evaluators/best_state_evaluator_{time_id}.pth"
 
         for i in range(self.num_epochs_for_state_evaluator):
             indexes = np.random.choice(self.dataset.episode_indices, size=self.batch_size, replace=True)
@@ -202,7 +202,8 @@ class InverseAgent(nn.Module):
     def save_state_evaluator(self, path=None):
         time = datetime.now().strftime('%m.%d-%H:%M')
         if path is None:
-            torch.save(self.state_evaluator.state_dict(), f"./models/state_evaluators/state_evaluator_{time}.pth")
+            torch.save(self.state_evaluator.state_dict(),
+                       f"logs/model_logs/state_evaluators/state_evaluator_{time}.pth")
         else:
             torch.save(self.state_evaluator.state_dict(), path)
 
@@ -230,13 +231,13 @@ class InverseAgent(nn.Module):
 
         t0 = datetime.now()
         time_id = datetime.now().strftime('%m.%d-%H:%M')
-        log_path = f"./logs/initial_policy_differences_{time_id}.npy"
+        log_path = f"./logs/differences/initial_policy_differences_{time_id}.npy"
         training_logs = []
 
         # loss_option = "MSE"
         loss_option = "log_prob"
-        model_save_path = f"./models/initial_policies/initial_policy_{loss_option}_{time_id}.pth"
-        best_model_path = f"./models/initial_policies/best_initial_policy_{loss_option}_{time_id}.pth"
+        model_save_path = f"logs/model_logs/initial_policies/initial_policy_{loss_option}_{time_id}.pth"
+        best_model_path = f"logs/model_logs/initial_policies/best_initial_policy_{loss_option}_{time_id}.pth"
 
         for i in range(self.num_epochs_for_initial_policy):
             episode = list(self.dataset.sample_episodes(1))[0]
@@ -328,7 +329,7 @@ class InverseAgent(nn.Module):
     def save_pretrained_policy(self, path=None):
         time = datetime.now().strftime('%m.%d-%H:%M')
         if path is None:
-            torch.save(self.initial_policy.state_dict(), f"./models/initial_policies/initial_policy_{time}.pth")
+            torch.save(self.initial_policy.state_dict(), f"logs/model_logs/initial_policies/initial_policy_{time}.pth")
         else:
             torch.save(self.initial_policy.state_dict(), path)
 
@@ -398,7 +399,7 @@ class InverseAgent(nn.Module):
             inverse_model = PPO.load(continue_from_path, env=env, device="cpu")
 
         time = datetime.now().strftime('%m.%d-%H:%M')
-        model_dir = f"./models/inverse_model_logs/{time}"
+        model_dir = f"logs/model_logs/inverse_model_logs/{time}"
         os.mkdir(model_dir)
 
         total_timesteps = self.total_steps_for_inverse_skill
@@ -421,9 +422,7 @@ class InverseAgent(nn.Module):
 
     def save_inverse_model(self):
         time = datetime.now().strftime('%m.%d-%H:%M')
-        self.inverse_model.save(f"./models/inverse_model_{time}")
-
-
+        self.inverse_model.save(f"logs/model_logs/inverse_model_{time}")
 
 
 if __name__ == "__main__":
@@ -436,8 +435,8 @@ if __name__ == "__main__":
     env = XarmTableEnv(control_option="ee_pos")
     inverse_agent = InverseAgent(env, dataset, validation_dataset=validation_dataset, non_robot_indices_in_obs=[0, 1, 2])
 
-    # path = "models/state_evaluators/best_state_evaluator_03.04-03:31.pth" # trained on 4d_action_space_random_gripper
-    # path = "models/state_evaluators/best_state_evaluator_03.05-16:50.pth" # trained on same_directly_forward
+    # path = "logs/model_logs/state_evaluators/best_state_evaluator_03.04-03:31.pth" # trained on 4d_action_space_random_gripper
+    # path = "logs/model_logs/state_evaluators/best_state_evaluator_03.05-16:50.pth" # trained on same_directly_forward
     # path = None
     # inverse_agent.train_state_evaluator(load_from_path=path, device=device)
 
@@ -449,11 +448,11 @@ if __name__ == "__main__":
 
 
 
-    path = "./models/initial_policies/best_initial_policy_log_prob_03.04-18:34.pth" # trained on 4d_action_space_random_gripper
-    # path = "./models/initial_policies/best_initial_policy_log_prob_03.05-16:57.pth" # trained on same_directly_forward
+    path = "logs/model_logs/initial_policies/best_initial_policy_log_prob_03.04-18:34.pth"  # trained on 4d_action_space_random_gripper
+    # path = "logs/model_logs/initial_policies/best_initial_policy_log_prob_03.05-16:57.pth" # trained on same_directly_forward
     # path = None
     inverse_agent.pretrain_policy(load_from_path=path, device=device)
 
-    # path = "./models/inverse_model_logs/03.04-21:26/rl_model_9728000_steps.zip"
+    # path = "logs/model_logs/inverse_model_logs/03.04-21:26/rl_model_9728000_steps.zip"
     # path=None
     # inverse_agent.train_inverse_PPO(continue_from_path=path)

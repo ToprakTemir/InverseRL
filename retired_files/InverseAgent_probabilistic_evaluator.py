@@ -92,8 +92,8 @@ class InverseAgent(nn.Module):
         time_id = datetime.now().strftime('%m.%d-%H:%M')
         log_path = f"./logs/state_evaluator_differences_{time_id}.npy"
         training_logs = []
-        model_save_path = f"./models/state_evaluators/probabilistic_state_evaluator_{time_id}.pth"
-        best_model_path = f"./models/state_evaluators/best_probabilistic_state_evaluator_{time_id}.pth"
+        model_save_path = f"./model_logs/state_evaluators/probabilistic_state_evaluator_{time_id}.pth"
+        best_model_path = f"./model_logs/state_evaluators/best_probabilistic_state_evaluator_{time_id}.pth"
 
         for i in range(self.num_steps_for_state_evaluator):
             episodes = list(self.dataset.sample_episodes(self.batch_size))
@@ -172,7 +172,7 @@ class InverseAgent(nn.Module):
     def save_state_evaluator(self, path=None):
         time = datetime.now().strftime('%m.%d-%H:%M')
         if path is None:
-            torch.save(self.state_evaluator.state_dict(), f"./models/state_evaluators/state_evaluator_{time}.pth")
+            torch.save(self.state_evaluator.state_dict(), f"./model_logs/state_evaluators/state_evaluator_{time}.pth")
         else:
             torch.save(self.state_evaluator.state_dict(), path)
 
@@ -215,12 +215,12 @@ class InverseAgent(nn.Module):
         save_freq = 100_000
         report_freq = 1000
 
-        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="../models/inverse_model_logs/")
+        checkpoint_callback = CheckpointCallback(save_freq=save_freq, save_path="../model_logs/inverse_model_logs/")
         stop_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=save_freq, verbose=1)
         eval_callback = EvalCallback(
             env,
-            best_model_save_path="../models/inverse_model_logs/",
-            log_path="../models/inverse_model_logs/",
+            best_model_save_path="../model_logs/inverse_model_logs/",
+            log_path="../model_logs/inverse_model_logs/",
             eval_freq=report_freq,
             callback_after_eval=stop_callback
         )
@@ -231,7 +231,7 @@ class InverseAgent(nn.Module):
 
     def save_inverse_model(self):
         time = datetime.now().strftime('%m.%d-%H:%M')
-        self.inverse_model.save(f"./models/inverse_model_{time}")
+        self.inverse_model.save(f"./model_logs/inverse_model_{time}")
 
 
 if __name__ == "__main__":
@@ -242,7 +242,7 @@ if __name__ == "__main__":
 
     inverse_agent.train_state_evaluator()
     inverse_agent.save_state_evaluator()
-    # inverse_agent.load_state_evaluator("./models/state_evaluators/state_evaluator_02.05-17:45.pth")
+    # inverse_agent.load_state_evaluator("./model_logs/state_evaluators/state_evaluator_02.05-17:45.pth")
 
     # inverse_agent.train_inverse_model()
     # inverse_agent.save_inverse_model()

@@ -7,18 +7,18 @@ import os
 import minari
 import time
 
-from StateEvaluator import StateEvaluator
+from models.StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
 from environments.XarmTableEnvironment import XarmTableEnv
 
-from CustomPPOPolicy import CustomPolicy
+from models.CustomPPOPolicy import CustomPolicy
 
 
 # --- ENVIRONMENT SETUP ---
 
 non_robot_indices_in_observation = [0, 1, 2]
 state_evaluator = StateEvaluator(len(non_robot_indices_in_observation))
-state_evaluator_path = "/Users/toprak/InverseRL/inverse_trainer/models/state_evaluators/state_evaluator_03.05-16:50.pth"
+state_evaluator_path = "/inverse_trainer/model_logs/state_evaluators/state_evaluator_03.05-16:50.pth"
 state_evaluator.load_state_dict(torch.load(state_evaluator_path, map_location=torch.device('cpu')))
 
 dataset = minari.load_dataset("xarm_push_4d_action_space_random_gripper_20-v0")
@@ -26,8 +26,8 @@ env = XarmTableEnv(control_option="ee_pos", render_mode="human")
 
 env = InverseTrainerEnv(env, state_evaluator, dataset, non_robot_indices_in_obs=non_robot_indices_in_observation)
 
-initial_model_path = "./models/initial_policies/best_initial_policy_log_prob_03.04-18:34.pth" # the one used in pulls_sometimes model
-# initial_model_path = "./models/initial_policies/best_initial_policy_log_prob_03.05-16:57.pth"
+initial_model_path = "model_logs/initial_policies/best_initial_policy_log_prob_03.04-18:34.pth"  # the one used in pulls_sometimes model
+# initial_model_path = "./model_logs/initial_policies/best_initial_policy_log_prob_03.05-16:57.pth"
 
 initial_policy = CustomPolicy(env.observation_space, env.action_space)
 pretrained_weights = torch.load(initial_model_path, map_location=torch.device('cpu'))
@@ -41,8 +41,8 @@ model.policy.load_state_dict(initial_policy.state_dict())
 pretrained_model = model
 #--------------------
 
-# model_dir_path = f"/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_logs/03.06-03:42"
-model_dir_path = f"/Users/toprak/InverseRL/inverse_trainer/models/inverse_model_logs/03.04-19:12_pulls_sometimes"
+# model_dir_path = f"/Users/toprak/InverseRL/inverse_trainer/model_logs/inverse_model_logs/03.06-03:42"
+model_dir_path = f"/inverse_trainer/model_logs/inverse_model_logs/03.04-19:12_pulls_sometimes"
 
 # OPTION = "latest"
 OPTION = "best"
@@ -78,11 +78,11 @@ else:
 # ----- TESTING -----
 
 # for rewarding as
-from train_pure_PPO import PurePPOEnv
+from train_PPO_with_expert_inverse_reward import PurePPOEnv
 env = XarmTableEnv(control_option="ee_pos", render_mode="human")
 env = PurePPOEnv(env)
 
-pure_ppo_model = PPO.load("./models/pure_PPOs/03.07-20:35/best_model.zip")
+pure_ppo_model = PPO.load("model_logs/pure_PPOs/03.07-20:35/best_model.zip")
 
 # while True:
 # for i, model_name in enumerate(["full_model", "pretrained_model", "pure_PPO"]):
@@ -147,7 +147,7 @@ ee_rewards = np.array(ee_rewards)
 initial_distances = np.array(initial_distances)
 final_distances = np.array(final_distances)
 
-# save_dir = "./models/final_reward_logs/"
+# save_dir = "./model_logs/final_reward_logs/"
 # save_path = save_dir +  f"03.08_{model_name}_500_steps_distance_and_ee_reward.npz"
 #
 # np.savez(save_path, total_rewards=total_rewards, dist_rewards=dist_rewards, ee_rewards=ee_rewards, initial_distances=initial_distances, final_distances=final_distances)

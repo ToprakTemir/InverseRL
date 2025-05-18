@@ -20,14 +20,14 @@ heatmap_images = [
 # Titles for columns
 titles = ["TVK Yok", "TVK=0.1", "TVK=0.15", "TVK=0.2"]
 
-# Create figure with further reduced spacing
-fig, axes = plt.subplots(2, 4, figsize=(16, 9),
-                         gridspec_kw={'wspace': 0.0, 'hspace': 0.0, 'height_ratios': [1.4, 1]})
+# Create figure with removed spacing and tight layout
+fig, axes = plt.subplots(2, 4, figsize=(16, 7), tight_layout=True,
+                         gridspec_kw={'wspace': 0.0, 'hspace': 0.0, 'height_ratios': [1, 1]})
 
 # Plot heatmaps on top row with smaller title font
 for ax, img, title in zip(axes[0], heatmap_images, titles):
     ax.imshow(img)
-    ax.set_title(title, fontsize=10)
+    ax.set_title(title, fontsize=30)
     ax.axis('off')
 
 # Plot SE predictions on bottom row

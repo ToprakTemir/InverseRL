@@ -10,11 +10,11 @@ import gymnasium as gym
 import minari
 import time
 
-from StateEvaluator import StateEvaluator
+from models.StateEvaluator import StateEvaluator
 from InverseTrainerEnv import InverseTrainerEnv
 from environments.XarmTableEnvironment import XarmTableEnv
 
-from CustomPPOPolicy import CustomPolicy
+from models.CustomPPOPolicy import CustomPolicy
 
 class spawn_object(gym.Wrapper):
     def __init__(self, env: XarmTableEnv):
@@ -41,7 +41,7 @@ class spawn_object(gym.Wrapper):
 env = XarmTableEnv(control_option="ee_pos", render_mode="human")
 env = spawn_object(env)
 
-path = "./models/initial_policies/best_initial_policy_log_prob_03.02-04:42.pth"
+path = "logs/model_logs/initial_policies/best_initial_policy_log_prob_03.05-16:57.pth"
 initial_policy = CustomPolicy(env.observation_space, env.action_space)
 pretrained_weights = torch.load(path, map_location=torch.device('cpu'))
 initial_policy.load_state_dict(pretrained_weights)

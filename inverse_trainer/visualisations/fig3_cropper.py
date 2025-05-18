@@ -6,13 +6,13 @@ import os
 dir = "/Users/toprak/Desktop/"
 image_filenames = [
     "SE_predictions_0TVL.png",
-    "SE_predictions_02TVL.png",
-    "landscape_02TVL.png",
-    "landscape_0TVL.png",
     "SE_predictions_01TVL.png",
+    "SE_predictions_015TVL.png",
+    "SE_predictions_02TVL.png",
+    "landscape_0TVL.png",
     "landscape_01TVL.png",
     "landscape_015TVL.png",
-    "SE_predictions_015TVL.png"
+    "landscape_02TVL.png",
 ]
 
 for filename in image_filenames:

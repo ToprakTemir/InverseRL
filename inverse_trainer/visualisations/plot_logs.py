@@ -4,13 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
 import torch
-from torch.backends.cudnn import deterministic
 
-from StateEvaluator import StateEvaluator
+from inverse_trainer.models.StateEvaluator import StateEvaluator
 import minari
 import random
 
-from CustomPPOPolicy import CustomPolicy
+from inverse_trainer.models.CustomPPOPolicy import CustomPolicy
 
 
 def plot_evaluator_training_info(evaluator_differences_path=None):
@@ -67,7 +66,7 @@ def plot_evaluator_training_info(evaluator_differences_path=None):
 def plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path=None, title=None):
     # Load dataset, environment, and the state evaluator model
     if state_evaluator_path is None:
-        state_evaluator_path = "models/state_evaluators/state_evaluator_02.19-14:43.pth"
+        state_evaluator_path = "../logs/model_logs/state_evaluators/state_evaluator_02.19-14:43.pth"
     dataset = minari.load_dataset("xarm_push_3d_action_space_closer_1k-v0")
 
     state_evaluator = StateEvaluator(3)
@@ -113,8 +112,8 @@ def plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path=None
     # Plot the diagonal line (perfect prediction) for reference
     plt.plot([0, 1], [0, 1], "k--", label="Ideal")
 
-    plt.xlabel("Actual Timestamp", fontsize=14)
-    plt.ylabel("Predicted Timestamp", fontsize=14)
+    plt.xlabel("Gerçek Zaman", fontsize=60)
+    plt.ylabel("Tahmini Zaman", fontsize=60)
     if title is None:
         title = "Predicted vs Actual Timestamps (All Episodes)"
     # plt.title(title)
@@ -123,14 +122,14 @@ def plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path=None
     plt.tight_layout()
     plt.show()
 
-def plot_evaluator_guesses_in_2d_plane(state_evaluator_path=None, title=None):
+def plot_evaluator_guesses_in_2d_plane(state_evaluator_path=None, title=None, color_bar_fontsize=20):
     """
     Visualizes the state evaluator's predictions over a 2D grid of object locations.
     Uses a smooth colormap to enhance distinguishability in abrupt value changes.
     """
     # Load the state evaluator model
     if state_evaluator_path is None:
-        state_evaluator_path = "models/state_evaluators/state_evaluator_02.21-13:14.pth"
+        state_evaluator_path = "../logs/model_logs/state_evaluators/state_evaluator_02.21-13:14.pth"
 
     state_evaluator = StateEvaluator(3)
     state_evaluator.load_state_dict(torch.load(state_evaluator_path))
@@ -165,14 +164,15 @@ def plot_evaluator_guesses_in_2d_plane(state_evaluator_path=None, title=None):
     # Plot the predictions with a smooth interpolation
     plt.figure(figsize=(10, 8))
     plt.imshow(predictions, extent=[x_min, x_max, y_min, y_max], origin="lower", cmap="turbo", interpolation="bilinear")
-    plt.colorbar(label="State Evaluator Prediction")
+    cbar = plt.colorbar()
+    cbar.set_label("Renk Değerleri", fontsize=color_bar_fontsize)
     # plt.xlabel("X Position (m)")
     # plt.ylabel("Y Position (m)")
 
     if title is None:
         title = "State Evaluator Predictions in 2D Plane"
-
     # plt.title(title)
+
     plt.grid(True, linestyle="--", alpha=0.3)
     plt.show()
 
@@ -392,38 +392,44 @@ if __name__ == "__main__":
     # make_cool_state_eval_plot()
 
     # STATE EVALUATOR TESTS
-    evaluator_differences_path = "./logs/state_evaluator_differences_03.04-03:31.npy"
-    state_evaluator_path = "models/state_evaluators/best_state_evaluator_03.04-03:31.pth"
-    plot_evaluator_training_info(evaluator_differences_path)
-    plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path)
-    plot_evaluator_guesses_in_2d_plane(state_evaluator_path)
+    # evaluator_differences_path = "logs/differences/state_evaluator_differences_03.04-03:31.npy"
+    # state_evaluator_path = "logs/model_logs/state_evaluators/best_state_evaluator_03.04-03:31.pth"
+    # plot_evaluator_training_info(evaluator_differences_path)
+    # plot_evaluator_guesses_compared_to_real_timestamps(state_evaluator_path)
+    # plot_evaluator_guesses_in_2d_plane(state_evaluator_path)
 
     # PLOTTING 4 DIFFERENT TVL VALUED EVALUATOR
-    # id1 = "models/state_evaluators/state_evaluator_03.02-23:29_no_TVL.pth"
-    # id2 = "models/state_evaluators/state_evaluator_03.04-03:09_TVL_01.pth"
-    # id3 = "models/state_evaluators/state_evaluator_03.04-03:20_TVL_02.pth"
-    # id4 = "models/state_evaluators/state_evaluator_03.04-03:31_TVL_015.pth"
-    #
-    # notes = ["No TVL", "TVL=0.1", "TVL=0.2", "TVL=0.15"]
-    # i = 0
-    # for id in [id1, id2, id4, id3]:
-    #     plot_evaluator_guesses_compared_to_real_timestamps(id, title=notes[i])
-    #     plot_evaluator_guesses_in_2d_plane(id, title=notes[i])
-    #     i += 1
+    id1 = "logs/model_logs/state_evaluators/state_evaluator_03.02-23:29_no_TVL.pth"
+    id2 = "logs/model_logs/state_evaluators/state_evaluator_03.04-03:09_TVL_01.pth"
+    id3 = "logs/model_logs/state_evaluators/state_evaluator_03.04-03:20_TVL_02.pth"
+    id4 = "logs/model_logs/state_evaluators/state_evaluator_03.04-03:31_TVL_015.pth"
+
+    notes = ["No TVL", "TVL=0.1", "TVL=0.2", "TVL=0.15"]
+    i = 0
+    for id in [id1, id2, id4]:
+        plot_evaluator_guesses_compared_to_real_timestamps(id, title=notes[i])
+        plot_evaluator_guesses_in_2d_plane(id, title=notes[i], color_bar_fontsize=0)
+        i += 1
+
+    for id in [id3]:
+        plot_evaluator_guesses_compared_to_real_timestamps(id, title=notes[i])
+        plot_evaluator_guesses_in_2d_plane(id, title=notes[i], color_bar_fontsize=45)
+        i += 1
+
 
     # INITIAL POLICY TESTS
-    # losses_path = "./logs/initial_policy_differences_03.02-23:35.npy"
-    # initial_policy_path = "models/initial_policies/best_initial_policy_log_prob_03.02-23:35.pth"
+    # losses_path = "./differences/initial_policy_differences_03.02-23:35.npy"
+    # initial_policy_path = "../logs/model_logs/initial_policies/best_initial_policy_log_prob_03.02-23:35.pth"
     # plot_initial_policy_training_info(losses_path)
     # plot_initial_policy_guesses_compared_to_reverse_trajectory(path=initial_policy_path)
 
     # show_difference_between_datasets(dataset1="xarm_synthetic_push_50-v0", dataset2="xarm_synthetic_push_1k-v0")
 
     # FINAL MODEL TEST
-    # ppo_evaluations_path = f"./models/inverse_model_logs/03.06-03:42/evaluations.npz"
+    # ppo_evaluations_path = f"../logs/model_logs/inverse_model_logs/03.06-03:42/evaluations.npz"
     # plot_ppo_evaluations(path=ppo_evaluations_path)
 
     # Pure PPO rewards
-    # path = f"./models/pure_PPOs/03.07-01:48/evaluations.npz"
+    # path = f"../logs/model_logs/pure_PPOs/03.07-01:48/evaluations.npz"
     # plot_ppo_evaluations(path)
 

@@ -89,7 +89,7 @@ def train(model_dir):
 
 if __name__ == "__main__":
     time = datetime.now().strftime("%m.%d-%H:%M")
-    save_dir = f"./models/pure_PPOs/{time}"
+    save_dir = f"logs/model_logs/pure_PPOs/{time}"
     train(model_dir=save_dir)
 
     # -- TEST --
@@ -98,9 +98,9 @@ if __name__ == "__main__":
     # # option = "latest"
     # option = "best"
     # if option == "best":
-    #     model = PPO.load(f"./models/pure_PPOs/{time}/best_model.zip")
+    #     model = PPO.load(f"./model_logs/pure_PPOs/{time}/best_model.zip")
     # else:
-    #     model = PPO.load(f"./models/pure_PPOs/{time}/28173645918276.zip")
+    #     model = PPO.load(f"./model_logs/pure_PPOs/{time}/28173645918276.zip")
     #
     #
     # while True:

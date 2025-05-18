@@ -7,7 +7,7 @@ from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
 import minari
 
-from StateEvaluator import StateEvaluator
+from models.StateEvaluator import StateEvaluator
 
 
 class InverseTrainerEnv(gym.Wrapper):

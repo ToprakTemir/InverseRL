@@ -3,6 +3,7 @@ from gymnasium import spaces
 from gymnasium.utils import EzPickle
 from gymnasium.envs.mujoco import MujocoEnv
 import mujoco
+import os
 
 class XarmTableEnv(MujocoEnv, EzPickle):
     """
@@ -51,9 +52,10 @@ class XarmTableEnv(MujocoEnv, EzPickle):
             low=-np.inf, high=np.inf, shape=(self.observation_dim,), dtype=np.float32
         )
 
+        xml_path = os.path.join(os.path.dirname(__file__), xml_file)
         MujocoEnv.__init__(
             self,
-            xml_file,
+            xml_path,
             frame_skip,
             default_camera_config={"trackbodyid": -1, "distance": 2.5},
             # If you're controlling positions directly, you might want to
